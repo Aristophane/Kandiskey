@@ -117,6 +117,9 @@ const SCALE_FAMILIES = {
     'Darbari Kanada':          [0,2,3,5,7,8,10],
     'Bhupali':                 [0,2,4,7,9],
     'Bageshree':               [0,2,3,5,7,8,10],
+  }},
+  none: { name: '— None —', scales: {
+    '— None —': []
   }}
 };
 
@@ -248,14 +251,30 @@ const SEQ = {
 let drumLoopLen = 16; // independent drum loop length
 
 // ── WORLD BEAT CLOCK ────────────────────────────────────────────────
-// epochMs: server-time ms at which beat 0 occurred (null = stopped).
-// Both instances derive their current step from sharedNow() - epochMs,
-// so the clock self-corrects on every tick without accumulated drift.
-let epochMs = null;
+// epochMs:      server-time ms at which beat 0 occurred (null = stopped).
+// peerEpochMs:  epoch of a currently-playing peer — used for phase-lock join.
+// masterBpm:    canonical BPM agreed upon by peers (each instance scales it
+//               by syncTempoRatio to get their local SEQ.bpm).
+// syncTempoRatio: local tempo multiplier vs the master BPM (1, 0.5, 2, 3…)
+let epochMs        = null;
+let peerEpochMs    = null;
+let masterBpm      = SEQ.bpm;
+let syncTempoRatio = 1;
 
 // Thin wrappers so sync calls are no-ops when server isn't configured
 function syncSend(msg)  { Sync.send(msg); }
 function sharedNow()    { return Sync.sharedNow(); }
+
+// Apply a master BPM from a peer, scaled by the local ratio
+function applyPeerBpm(bpm) {
+  masterBpm  = bpm;
+  SEQ.bpm    = Math.max(20, Math.round(bpm * syncTempoRatio));
+  const sl   = document.getElementById('seq-bpm');
+  const vl   = document.getElementById('seq-bpm-val');
+  if (sl) sl.value        = SEQ.bpm;
+  if (vl) vl.textContent  = SEQ.bpm;
+  if (seqEngine.playing) seqEngine.rebase(true);
+}
 
 function seqR()       { return RHYTHMS[SEQ.rhythmKey]; }
 function seqStepDur() { return 60 / SEQ.bpm / seqR().spb; }
@@ -526,6 +545,7 @@ const S = {
   showCents: true, showLabels: true,
   tuning: 'Standard (EADGBE)',
   fretboardOpen: false,
+  fbMode: 'both',
 };
 
 let midiActiveQuantizedMidi = null; // quantized MIDI note number currently playing
@@ -733,7 +753,16 @@ function draw() {
     const x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
     const inChord = chordNotes.includes(i);
     ctx.beginPath(); ctx.arc(x, y, inChord ? 5.5 : 4, 0, Math.PI * 2);
-    ctx.fillStyle = inChord ? 'rgba(52,211,153,0.5)' : 'rgba(255,255,255,0.13)'; ctx.fill();
+    let fillStyle = 'rgba(255,255,255,0.13)';
+    if (inChord) {
+      const interval = (i - S.chordRoot + 12) % 12;
+      if (interval === 0) fillStyle = 'rgba(239,68,68,0.7)';
+      else if (interval === 3 || interval === 4) fillStyle = 'rgba(234,179,8,0.7)';
+      else if (interval === 6 || interval === 7 || interval === 8) fillStyle = 'rgba(59,130,246,0.7)';
+      else if (interval === 10 || interval === 11) fillStyle = 'rgba(16,185,129,0.7)';
+      else fillStyle = 'rgba(168,85,247,0.7)';
+    }
+    ctx.fillStyle = fillStyle; ctx.fill();
     if (S.showLabels) {
       ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
@@ -751,9 +780,19 @@ function draw() {
     const dotR = isRoot ? 10 : 8;
 
     let col, glowCol, glowR;
-    if (isRoot)       { col = '#f59e0b'; glowCol = 'rgba(245,158,11,0.45)'; glowR = 15; }
-    else if (inChord) { col = '#34d399'; glowCol = 'rgba(52,211,153,0.4)';  glowR = 13; }
-    else              { col = '#a78bfa'; glowCol = 'rgba(167,139,250,0.32)'; glowR = 12; }
+    if (inChord) {
+      const interval = (noteIdx - S.chordRoot + 12) % 12;
+      if (interval === 0)      { col = '#ef4444'; glowCol = 'rgba(239,68,68,0.45)'; }
+      else if (interval === 3 || interval === 4) { col = '#eab308'; glowCol = 'rgba(234,179,8,0.45)'; }
+      else if (interval === 6 || interval === 7 || interval === 8) { col = '#3b82f6'; glowCol = 'rgba(59,130,246,0.45)'; }
+      else if (interval === 10 || interval === 11) { col = '#10b981'; glowCol = 'rgba(16,185,129,0.45)'; }
+      else                     { col = '#a855f7'; glowCol = 'rgba(168,85,247,0.45)'; }
+      glowR = 13;
+    } else if (isRoot) {
+      col = '#f59e0b'; glowCol = 'rgba(245,158,11,0.45)'; glowR = 15;
+    } else {
+      col = '#a78bfa'; glowCol = 'rgba(167,139,250,0.32)'; glowR = 12;
+    }
 
     const g = ctx.createRadialGradient(x, y, dotR, x, y, glowR);
     g.addColorStop(0, glowCol); g.addColorStop(1, 'transparent');
@@ -929,7 +968,123 @@ const fbCtx = fbCanvas.getContext('2d');
 const NUM_FRETS = 14;
 const STRING_NAMES_TOP = ['e','B','G','D','A','E']; // high to low visually
 
+let chordPositionBoxes = [];
+function updateChordPositions() {
+  if (S.chordName === '— None —' || !CHORDS[S.chordName]) {
+    chordPositionBoxes = [];
+    S.fbPosFilter = -1;
+    return;
+  }
+
+  const root = S.chordRoot;
+  const chordNotesSet = new Set(CHORDS[S.chordName].map(d => (d + root) % 12));
+
+  // openStrings[0] = high e (MIDI 64), openStrings[5] = low E (MIDI 40) for standard
+  const openStrings = [...GUITAR_TUNINGS[S.tuning]].reverse();
+
+  const SPAN = 3;
+  const seenSigs = new Set();
+  const allVoicings = [];
+
+  for (let wMin = 0; wMin <= NUM_FRETS - SPAN; wMin++) {
+    const wMax = wMin + SPAN;
+
+    // Open strings only allowed in low positions — above fret 2 they'd mix with fretted notes
+    // and beat real in-window voicings on score without representing an actual hand position.
+    const allowOpen = wMin <= 2;
+
+    // For each string: null = mute, 0 = open (if chord tone and allowed), 1..wMax = fretted chord tones
+    const candidates = openStrings.map(oMidi => {
+      const opts = [null];
+      if (allowOpen && chordNotesSet.has(oMidi % 12)) opts.push(0);
+      for (let f = Math.max(1, wMin); f <= wMax; f++) {
+        if (chordNotesSet.has((oMidi + f) % 12)) opts.push(f);
+      }
+      return opts;
+    });
+
+    let windowBest = null;
+    let windowBestScore = -Infinity;
+
+    const backtrack = (s, current, notes) => {
+      if (s === 6) {
+        if (notes.size < chordNotesSet.size) return;
+
+        const played = current.filter(f => f !== null);
+        if (played.length < 3) return;
+
+        // Find lowest-pitch (highest index) and highest-pitch (lowest index) played strings
+        let loStr = -1, hiStr = -1;
+        for (let i = 5; i >= 0; i--) { if (current[i] !== null && loStr === -1) loStr = i; }
+        for (let i = 0; i < 6; i++) { if (current[i] !== null && hiStr === -1) hiStr = i; }
+
+        let innerMutes = 0;
+        for (let i = hiStr; i <= loStr; i++) { if (current[i] === null) innerMutes++; }
+
+        const bassNote = (openStrings[loStr] + current[loStr]) % 12;
+        const fretted = played.filter(f => f > 0);
+        const span = fretted.length > 0 ? Math.max(...fretted) - Math.min(...fretted) : 0;
+
+        const score = played.length * 10
+          + (bassNote === root ? 50 : 0)
+          - innerMutes * 20
+          - span * 6;
+
+        if (score > windowBestScore) {
+          windowBestScore = score;
+          windowBest = { frets: [...current], score, min: wMin, max: wMax };
+        }
+        return;
+      }
+
+      for (const f of candidates[s]) {
+        current.push(f);
+        const newNotes = new Set(notes);
+        if (f !== null) newNotes.add((openStrings[s] + f) % 12);
+        backtrack(s + 1, current, newNotes);
+        current.pop();
+      }
+    };
+
+    backtrack(0, [], new Set());
+
+    if (windowBest) {
+      const sig = windowBest.frets.join(',');
+      if (!seenSigs.has(sig)) {
+        seenSigs.add(sig);
+        allVoicings.push(windowBest);
+      }
+    }
+  }
+
+  chordPositionBoxes = allVoicings.sort((a, b) => {
+    const avg = v => v.frets.filter(f => f !== null).reduce((s, f) => s + f, 0) / v.frets.filter(f => f !== null).length;
+    return avg(a) - avg(b);
+  });
+}
+
 function drawFretboard() {
+  updateChordPositions();
+  const posCtrl = document.getElementById('fb-pos-controls');
+  if (posCtrl) {
+    const hasChord = S.chordName !== '— None —' && S.fbMode !== 'scale' && chordPositionBoxes.length > 0;
+    posCtrl.style.display = 'flex';
+    const lbl = document.getElementById('fb-pos-lbl');
+    const btnPrev = document.getElementById('btn-fb-pos-prev');
+    const btnNext = document.getElementById('btn-fb-pos-next');
+    if (!hasChord) {
+      S.fbPosFilter = -1;
+      if (lbl) lbl.innerText = '—';
+      if (btnPrev) btnPrev.disabled = true;
+      if (btnNext) btnNext.disabled = true;
+    } else {
+      if (S.fbPosFilter >= chordPositionBoxes.length) S.fbPosFilter = -1;
+      if (lbl) lbl.innerText = S.fbPosFilter === -1 ? `All (${chordPositionBoxes.length})` : `${S.fbPosFilter + 1} / ${chordPositionBoxes.length}`;
+      if (btnPrev) btnPrev.disabled = false;
+      if (btnNext) btnNext.disabled = false;
+    }
+  }
+
   const wrap = fbCanvas.parentElement;
   const DPR = window.devicePixelRatio || 1;
   const W = wrap.clientWidth, H = wrap.clientHeight;
@@ -1043,17 +1198,52 @@ function drawFretboard() {
       const inChord = chordNotes.includes(noteIdx);
       const isMidiActive = midiActiveQuantizedMidi !== null && midi === midiActiveQuantizedMidi;
 
-      if (!inScale && !inChord && !isMidiActive) continue;
+      let drawScl = inScale;
+      let drawChd = inChord;
+      let drawRt = isRoot;
+      if (S.fbMode === 'scale') { drawChd = false; }
+      else if (S.fbMode === 'chord') { drawScl = false; drawRt = false; }
+
+      if (!drawScl && !drawChd && !isMidiActive && !drawRt) continue;
 
       const x = f === 0
         ? margin.left - fretW * 0.35
         : margin.left + (f - 0.5) * fretW;
 
+      let alpha = 1.0;
+      if (S.fbPosFilter !== -1 && chordPositionBoxes.length > 0 && S.chordName !== '— None —') {
+        const activeBox = chordPositionBoxes[S.fbPosFilter];
+        if (activeBox.frets[s] !== f) {
+           alpha = 0.15;
+        }
+      }
+
       let dotColor, border;
-      if (isRoot)                  { dotColor = '#f59e0b'; border = 'rgba(245,158,11,0.6)'; }
-      else if (inChord && inScale) { dotColor = '#34d399'; border = 'rgba(52,211,153,0.5)'; }
-      else if (inChord)            { dotColor = 'rgba(52,211,153,0.65)'; border = 'rgba(52,211,153,0.35)'; }
-      else                         { dotColor = '#a78bfa'; border = 'rgba(167,139,250,0.4)'; }
+      if (drawChd) {
+        const interval = (noteIdx - S.chordRoot + 12) % 12;
+        if (interval === 0) {
+          dotColor = inScale ? '#ef4444' : 'rgba(239,68,68,0.65)';
+          border = 'rgba(239,68,68,0.5)';
+        } else if (interval === 3 || interval === 4) {
+          dotColor = inScale ? '#eab308' : 'rgba(234,179,8,0.65)';
+          border = 'rgba(234,179,8,0.5)';
+        } else if (interval === 6 || interval === 7 || interval === 8) {
+          dotColor = inScale ? '#3b82f6' : 'rgba(59,130,246,0.65)';
+          border = 'rgba(59,130,246,0.5)';
+        } else if (interval === 10 || interval === 11) {
+          dotColor = inScale ? '#10b981' : 'rgba(16,185,129,0.65)';
+          border = 'rgba(16,185,129,0.5)';
+        } else {
+          dotColor = inScale ? '#a855f7' : 'rgba(168,85,247,0.65)';
+          border = 'rgba(168,85,247,0.5)';
+        }
+      } else if (drawRt) {
+        dotColor = '#f59e0b'; border = 'rgba(245,158,11,0.6)';
+      } else {
+        dotColor = '#a78bfa'; border = 'rgba(167,139,250,0.4)';
+      }
+
+      fbCtx.globalAlpha = alpha;
 
       fbCtx.beginPath();
       fbCtx.arc(x, sy, 7, 0, Math.PI * 2);
@@ -1066,7 +1256,7 @@ function drawFretboard() {
       fbCtx.font = 'bold 7px system-ui';
       fbCtx.textAlign = 'center';
       fbCtx.textBaseline = 'middle';
-      fbCtx.fillStyle = isRoot ? '#1a0c00' : 'rgba(0,0,0,0.75)';
+      fbCtx.fillStyle = drawRt ? '#1a0c00' : 'rgba(0,0,0,0.75)';
       fbCtx.fillText(CHROMATIC[noteIdx], x, sy);
 
       // MIDI playback highlight ring
@@ -1077,6 +1267,8 @@ function drawFretboard() {
         pg.addColorStop(0, 'rgba(255,255,255,0.18)'); pg.addColorStop(1, 'transparent');
         fbCtx.beginPath(); fbCtx.arc(x, sy, 16, 0, Math.PI * 2); fbCtx.fillStyle = pg; fbCtx.fill();
       }
+
+      fbCtx.globalAlpha = 1.0;
     }
   }
 
@@ -1280,6 +1472,25 @@ function buildTuningSelect() {
     sel.appendChild(opt);
   });
   sel.addEventListener('change', () => { S.tuning = sel.value; drawFretboard(); });
+
+  const fbModeSel = document.getElementById('sel-fb-mode');
+  if (fbModeSel) {
+    fbModeSel.addEventListener('change', () => { S.fbMode = fbModeSel.value; drawFretboard(); });
+  }
+
+  const btnFbPrev = document.getElementById('btn-fb-pos-prev');
+  if (btnFbPrev) btnFbPrev.addEventListener('click', () => {
+    if (chordPositionBoxes.length === 0) return;
+    S.fbPosFilter = S.fbPosFilter > -1 ? S.fbPosFilter - 1 : chordPositionBoxes.length - 1;
+    drawFretboard();
+  });
+
+  const btnFbNext = document.getElementById('btn-fb-pos-next');
+  if (btnFbNext) btnFbNext.addEventListener('click', () => {
+    if (chordPositionBoxes.length === 0) return;
+    S.fbPosFilter = S.fbPosFilter < chordPositionBoxes.length - 1 ? S.fbPosFilter + 1 : -1;
+    drawFretboard();
+  });
 }
 
 
@@ -1701,23 +1912,55 @@ const seqEngine = {
   },
 
   _tick() {
-    const LOOK = 0.15;
-    const dur = seqStepDur();
-    const loopLen = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
-    while (this.nextTime < audio.actx.currentTime + LOOK) {
-      this._playStep(this.step, this.nextTime);
-      this.nextTime += dur;
-      this.step = (this.step + 1) % loopLen;
+    const LOOK    = 0.15;
+    const dur     = seqStepDur();
+    const melLoop = Math.max(1, Math.min(SEQ.loopLen,  seqSteps()));
+    const drmLoop = Math.max(1, Math.min(drumLoopLen,  seqSteps()));
+    const loopLen = Math.max(melLoop, drmLoop); // master counter covers both
+    const melDur  = melLoop * dur;
+    const drmDur  = drmLoop * dur;
+    const now     = audio.actx.currentTime;
+
+    // ── Audio scheduling ────────────────────────────────────────────
+    // _barJoining: suppress audio until next bar boundary after phase-lock join
+    if (this._barJoining && this.nextTime <= now + LOOK) {
+      this._barJoining = false;
     }
-    // Use world clock when synced so both instances show the same step.
-    // Falls back to local audio clock when running standalone (epochMs=null).
-    const loopDur = loopLen * dur;
+    if (!this._barJoining) {
+      while (this.nextTime < now + LOOK) {
+        this._playStep(this.step % melLoop, this.nextTime);
+        drumPlayStep(this.step % drmLoop,   this.nextTime); // drum hits pre-scheduled here
+        this.nextTime += dur;
+        this.step = (this.step + 1) % loopLen;
+      }
+    }
+
+    // ── Display steps ────────────────────────────────────────────────
     if (epochMs !== null) {
-      const worldElapsed = (sharedNow() - epochMs) / 1000;
-      this.displayStep = worldElapsed < 0 ? 0 : Math.floor((worldElapsed % loopDur) / dur) % loopLen;
+      // World clock: both instances show the same step at the same moment
+      const worldElapsed   = (sharedNow() - epochMs) / 1000;
+      this.displayStep     = worldElapsed < 0 ? 0 : Math.floor((worldElapsed % melDur) / dur) % melLoop;
+      this.drumDisplayStep = worldElapsed < 0 ? 0 : Math.floor((worldElapsed % drmDur) / dur) % drmLoop;
+
+      // ── Periodic audio correction (~every 1 s) ────────────────────
+      if (!this._barJoining) {
+        if (this._corrTick === undefined) this._corrTick = 0;
+        if (++this._corrTick % 50 === 0) {
+          this.startTime = now - worldElapsed;
+          const phaseInStep    = worldElapsed % dur;
+          const targetNextTime = now + (dur - phaseInStep);
+          const drift          = targetNextTime - this.nextTime;
+          if (Math.abs(drift) > 0.001 && Math.abs(drift) < dur * 0.5) {
+            this.nextTime += drift;
+            this.step = (Math.floor((worldElapsed % melDur) / dur) + 1) % loopLen;
+          }
+        }
+      }
     } else {
-      const elapsed = audio.actx.currentTime - this.startTime;
-      this.displayStep = elapsed < 0 ? 0 : Math.floor((elapsed % loopDur) / dur) % loopLen;
+      // Standalone fallback — local audio clock only
+      const elapsed        = now - this.startTime;
+      this.displayStep     = elapsed < 0 ? 0 : Math.floor((elapsed % melDur) / dur) % melLoop;
+      this.drumDisplayStep = elapsed < 0 ? 0 : Math.floor((elapsed % drmDur) / dur) % drmLoop;
     }
   },
 
@@ -1740,14 +1983,34 @@ const seqEngine = {
       const timeToNext   = dur - (posInLoop % dur);
       this.nextTime      = audio.actx.currentTime + timeToNext;
       this.step          = (this.displayStep + 1) % loopLen;
+    } else if (peerEpochMs !== null) {
+      // ── Bar-quantized join: wait for next bar boundary so step 0 fires
+      // on both instances at the exact same world-clock moment.
+      epochMs = peerEpochMs;
+      const dur          = seqStepDur();
+      const loopLen      = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
+      const loopDur      = loopLen * dur;
+      const worldElapsed = Math.max(0, (sharedNow() - epochMs) / 1000);
+      const posInLoop    = worldElapsed % loopDur;
+      const timeToBar    = loopDur - posInLoop;   // seconds until next bar start
+
+      // displayStep follows world clock immediately (visual feedback)
+      this.displayStep   = Math.floor(posInLoop / dur) % loopLen;
+      this.startTime     = audio.actx.currentTime + timeToBar; // step 0 at bar start
+      this.nextTime      = audio.actx.currentTime + timeToBar; // first audio event
+      this.step          = 0;
+      this._barJoining   = true;   // suppress audio until bar arrives
+      this._corrTick     = 0;
+      syncSend({ type: 'JOINED', epochMs, masterBpm, ...syncGetFullState() });
     } else {
-      // ── Leader: create a new epoch and broadcast full state ───────
+      // ── Leader: no peer playing — create a fresh epoch ────────────
       epochMs            = sharedNow();
+      masterBpm          = SEQ.bpm;
       this.step          = 0;
       this.displayStep   = 0;
       this.startTime     = audio.actx.currentTime;
       this.nextTime      = this.startTime + 0.02;
-      syncSend({ type: 'PLAY', epochMs, ...syncGetFullState() });
+      syncSend({ type: 'PLAY', epochMs, masterBpm, ...syncGetFullState() });
     }
 
     this._ivl = setInterval(() => { if (this.playing) this._tick(); }, 20);
@@ -1757,7 +2020,9 @@ const seqEngine = {
   },
 
   stop(fromRemote = false) {
-    this.playing = false;
+    this.playing      = false;
+    this._barJoining  = false;
+    this._corrTick    = 0;
     clearInterval(this._ivl);
     if (this._raf) cancelAnimationFrame(this._raf);
     this.displayStep = -1;
@@ -1780,7 +2045,8 @@ const seqEngine = {
     if (epochMs !== null) {
       epochMs = sharedNow() - this.displayStep * seqStepDur() * 1000;
       if (!fromRemote) {
-        syncSend({ type: 'REBASE', epochMs, bpm: SEQ.bpm, rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
+        masterBpm = Math.round(SEQ.bpm / syncTempoRatio);
+        syncSend({ type: 'REBASE', epochMs, masterBpm, rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
       }
     }
   },
@@ -2750,10 +3016,11 @@ document.getElementById('seq-bpm').addEventListener('input', function() {
   document.getElementById('seq-bpm-val').textContent = this.value;
 });
 document.getElementById('seq-bpm').addEventListener('change', function() {
-  SEQ.bpm = parseInt(this.value);
+  SEQ.bpm   = parseInt(this.value);
+  masterBpm = Math.round(SEQ.bpm / syncTempoRatio);
   document.getElementById('seq-bpm-val').textContent = SEQ.bpm;
-  if (seqEngine.playing) seqEngine.rebase(); // rebase() broadcasts REBASE when playing
-  else syncSend({ type: 'SEQ_PARAM', bpm: SEQ.bpm });
+  if (seqEngine.playing) seqEngine.rebase(); // rebase() broadcasts REBASE with masterBpm
+  else syncSend({ type: 'SEQ_PARAM', masterBpm });
 });
 
 // Gate slider
@@ -3015,7 +3282,7 @@ function reloadDrumBank(bankName, onDone) {
 }
 
 function drumPlayStep(step, time) {
-  if (!drumsReady) return;
+  if (!drumsReady || !audio.enabled) return;
   activeBankKeys().forEach(key => {
     if (!DRUM_GRID[key + '_' + step]) return;
     const ab = drumBuffers[key];
@@ -3030,28 +3297,6 @@ function drumPlayStep(step, time) {
   });
 }
 
-// Patch _tick to also schedule drum hits alongside melody
-seqEngine._tick = function() {
-  const LOOK = 0.15;
-  const dur = seqStepDur();
-  const melLoop = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
-  const drmLoop = Math.max(1, Math.min(drumLoopLen, seqSteps()));
-  // Use the LCM-inspired approach: both loops run at the same clock
-  // Melody step wraps at melLoop, drum step wraps at drmLoop
-  while (this.nextTime < audio.actx.currentTime + LOOK) {
-    this._playStep(this.step % melLoop, this.nextTime);
-    drumPlayStep(this.step % drmLoop, this.nextTime);
-    this.nextTime += dur;
-    this.step = (this.step + 1) % Math.max(melLoop, drmLoop);
-  }
-  const elapsed = audio.actx.currentTime - this.startTime;
-  const loopDur = melLoop * dur;
-  this.displayStep = elapsed < 0 ? 0 : Math.floor((elapsed % loopDur) / dur) % melLoop;
-  this.drumDisplayStep = (() => {
-    const ld = drmLoop * dur;
-    return elapsed < 0 ? 0 : Math.floor((elapsed % ld) / dur) % drmLoop;
-  })();
-};
 
 const drumCanvas = document.getElementById('drum-canvas');
 const drumCtx = drumCanvas.getContext('2d');
@@ -3619,8 +3864,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 
   // Inject handle + header into each panel's synth-panel div
   [
-    { wrapId: 'mixer-wrap', label: '🎛 Mixer',   color: '#60a5fa' },
-    { wrapId: 'synth-wrap', label: '🎹 Synth',   color: '#f59e0b' },
+    { wrapId: 'mixer-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-mixer"></use></svg>Mixer',   color: '#60a5fa' },
+    { wrapId: 'synth-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-synth"></use></svg>Synth',   color: '#f59e0b' },
   ].forEach(({ wrapId, label, color }) => {
     const panel = document.querySelector(`#${wrapId} .synth-panel`);
     if (!panel) return;
@@ -3649,13 +3894,13 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   const fabMixer = document.createElement('button');
   fabMixer.id = 'mob-fab-mixer';
   fabMixer.className = 'mob-fab';
-  fabMixer.textContent = '🎛';
+  fabMixer.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-mixer"></use></svg>';
   fabMixer.setAttribute('aria-label', 'Mixer');
 
   const fabSynth = document.createElement('button');
   fabSynth.id = 'mob-fab-synth';
   fabSynth.className = 'mob-fab';
-  fabSynth.textContent = '🎹';
+  fabSynth.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-synth"></use></svg>';
   fabSynth.setAttribute('aria-label', 'Synth');
 
   document.body.appendChild(fabMixer);
@@ -3775,8 +4020,11 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   document.getElementById('mob-btn-play').addEventListener('click', () => seqEngine.play());
   document.getElementById('mob-btn-stop').addEventListener('click', () => seqEngine.stop());
 
-  // ── Visual canvas controls (synth panel) ─────────────────────────────
-  (function initMobileVisualControls() {
+  // Visual canvas controls are initialized globally below (initSynthVisualControls)
+})();
+
+// ── SYNTH VISUAL CONTROLS (desktop + mobile) ──────────────────────────
+(function initSynthVisualControls() {
     const A3 = '#f59e0b';
 
     function valLabel(ctx, text, w, h, color) {
@@ -4008,7 +4256,11 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
       window.addEventListener('mousemove', e => { if (dragging) onMove(e.clientX); });
       window.addEventListener('mouseup', () => { dragging = false; });
     });
-  })();
+
+    // Desktop: also trigger redraw on btn-synth click
+    document.getElementById('btn-synth')?.addEventListener('click', () => {
+      requestAnimationFrame(() => requestAnimationFrame(redrawAll));
+    });
 })();
 
 // ── DEFAULT SCALE ON FIRST MIDI PLAY ────────────────────────────────
@@ -4062,7 +4314,7 @@ _origMidiPlayEl.addEventListener('click', ensureDefaultScale, { capture: true })
   tooltip.innerHTML = `
     <div class="tour-arrow-up"></div>
     <div class="tour-bubble">
-      <span>▶ Press <strong>Play Bach</strong> to begin</span>
+      <span style="display:flex;align-items:center;gap:4px;"><svg class="hdr-icon" style="width:0.9em;height:0.9em;fill:currentColor"><use href="simple-white-icons.svg#icon-play"></use></svg> Press <strong>Play Bach</strong> to begin</span>
       <button class="tour-close-x" id="tour-tip-close">✕</button>
     </div>`;
   document.body.appendChild(tooltip);
@@ -4181,9 +4433,10 @@ function syncHandleMessage(msg) {
   switch (msg.type) {
 
     case 'PLAY':
+      peerEpochMs = msg.epochMs;
+      if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
       syncApplyFullState(msg);
       if (seqEngine.playing) {
-        // Already playing — re-lock to the incoming epoch
         epochMs = msg.epochMs;
         seqEngine.rebase(true);
       } else {
@@ -4193,13 +4446,19 @@ function syncHandleMessage(msg) {
       drawDrumMachine();
       break;
 
+    case 'JOINED':
+      // A peer joined our session — just record their epoch, don't restart
+      peerEpochMs = msg.epochMs;
+      break;
+
     case 'STOP':
+      peerEpochMs = null;
       seqEngine.stop(true);
       break;
 
     case 'REBASE':
-      // Remote tempo/rhythm/loopLen change while playing
-      if (msg.bpm       !== undefined) SEQ.bpm      = msg.bpm;
+      peerEpochMs = msg.epochMs;
+      if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
       if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
       if (msg.loopLen   !== undefined) SEQ.loopLen   = msg.loopLen;
       syncUpdateUI(msg);
@@ -4220,11 +4479,11 @@ function syncHandleMessage(msg) {
       break;
 
     case 'SEQ_PARAM':
-      if (msg.bpm         !== undefined) SEQ.bpm       = msg.bpm;
+      if (msg.masterBpm   !== undefined) applyPeerBpm(msg.masterBpm);
       if (msg.rhythmKey   !== undefined) SEQ.rhythmKey  = msg.rhythmKey;
-      if (msg.gate        !== undefined) SEQ.gate       = msg.gate;
-      if (msg.loopLen     !== undefined) SEQ.loopLen    = msg.loopLen;
-      if (msg.drumLoopLen !== undefined) drumLoopLen    = msg.drumLoopLen;
+      if (msg.gate        !== undefined) SEQ.gate        = msg.gate;
+      if (msg.loopLen     !== undefined) SEQ.loopLen     = msg.loopLen;
+      if (msg.drumLoopLen !== undefined) drumLoopLen     = msg.drumLoopLen;
       syncUpdateUI(msg);
       if (seqEngine.playing) seqEngine.rebase(true);
       drawSequencer();
@@ -4263,11 +4522,66 @@ function syncHandleMessage(msg) {
   badge.textContent = '● sync: connecting…';
   document.body.appendChild(badge);
 
+  // Tempo ratio UI — injected below the BPM slider when sync is active
+  const bpmGroup = document.getElementById('seq-bpm')?.closest('.syn-group') ??
+                   document.getElementById('seq-bpm')?.parentElement;
+  if (bpmGroup) {
+    const ratioRow = document.createElement('div');
+    ratioRow.style.cssText = 'display:flex;gap:4px;margin-top:4px;align-items:center;';
+
+    const label = document.createElement('span');
+    label.textContent = 'ratio:';
+    label.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;margin-right:2px;';
+    ratioRow.appendChild(label);
+
+    const RATIOS = [
+      { label: '÷3', val: 1/3 },
+      { label: '÷2', val: 0.5 },
+      { label: '×1', val: 1   },
+      { label: '×2', val: 2   },
+      { label: '×3', val: 3   },
+    ];
+
+    RATIOS.forEach(({ label: lbl, val }) => {
+      const btn = document.createElement('button');
+      btn.textContent = lbl;
+      btn.dataset.ratio = val;
+      btn.style.cssText = 'font-size:11px;padding:1px 7px;border-radius:6px;border:1px solid #334155;'
+        + 'background:#1e293b;color:#94a3b8;cursor:pointer;font-family:monospace;';
+      if (val === 1) { btn.style.background = '#0f172a'; btn.style.color = '#4ade80'; btn.style.borderColor = '#4ade80'; }
+
+      btn.addEventListener('click', () => {
+        syncTempoRatio = val;
+        // Highlight active
+        ratioRow.querySelectorAll('button').forEach(b => {
+          b.style.background   = '#1e293b';
+          b.style.color        = '#94a3b8';
+          b.style.borderColor  = '#334155';
+        });
+        btn.style.background  = '#0f172a';
+        btn.style.color       = '#4ade80';
+        btn.style.borderColor = '#4ade80';
+        // Re-apply master BPM with new ratio
+        applyPeerBpm(masterBpm);
+      });
+
+      ratioRow.appendChild(btn);
+    });
+
+    bpmGroup.appendChild(ratioRow);
+  }
+
   Sync.connect(
     serverUrl,
     syncHandleMessage,
     () => { badge.textContent = '● sync: live';           badge.style.color = '#4ade80'; },
     () => { badge.textContent = '● sync: reconnecting…';  badge.style.color = '#f87171'; },
+    // When NTP offset updates, re-anchor audio scheduling to the corrected clock
+    (_newOffset) => {
+      if (seqEngine.playing && epochMs !== null && !seqEngine._barJoining) {
+        seqEngine._corrTick = 49; // trigger correction on very next tick
+      }
+    },
   );
 })();
 

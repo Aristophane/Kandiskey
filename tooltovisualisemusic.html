@@ -3,32 +3,32 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kandisky</title>
+<title>Kandiskey</title>
 </head>
 <body>
 
 <!-- ═══ HEADER ═══ -->
 <header>
   <div class="hdr-top">
-    <h1>Kandisky</h1>
+    <h1>Kandiskey</h1>
     <div class="hdr-actions">
       <button class="hdr-btn active-audio" id="btn-audio" title="Toggle audio">
-        <span class="hdr-icon">🎧</span><span class="btn-text"> Audio</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg><span class="btn-text"> Audio</span>
       </button>
       <button class="hdr-btn" id="btn-guitar" title="Show guitar fretboard">
-        <span class="hdr-icon">🎸</span><span class="btn-text"> Fretboard</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-fretboard"></use></svg><span class="btn-text"> Fretboard</span>
       </button>
       <button class="hdr-btn" id="btn-synth" title="Synth controls">
-        <span class="hdr-icon">🎛</span><span class="btn-text"> Synth</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-synth"></use></svg><span class="btn-text"> Synth</span>
       </button>
       <button class="hdr-btn" id="btn-seq" title="Step sequencer">
-        <span class="hdr-icon">🎹</span><span class="btn-text"> Sequencer</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-sequencer"></use></svg><span class="btn-text"> Sequencer</span>
       </button>
       <button class="hdr-btn" id="btn-drums" title="Drum machine">
-        <span class="hdr-icon">🥁</span><span class="btn-text"> Drums</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-drums"></use></svg><span class="btn-text"> Drums</span>
       </button>
       <button class="hdr-btn" id="btn-mixer" title="Mixer &amp; FX">
-        <span class="hdr-icon">🎚</span><span class="btn-text"> Mixer</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg><span class="btn-text"> Mixer</span>
       </button>
     </div>
   </div>
@@ -36,8 +36,8 @@
   <div class="midi-bar" id="midi-bar-global">
     <span class="seq-lbl" style="white-space:nowrap">MIDI</span>
     <select id="midi-file-sel" class="sm" style="min-width:100px;max-width:220px"></select>
-    <button class="midi-btn" id="btn-midi-play" disabled>▶ Play Bach</button>
-    <button class="midi-btn stop-btn" id="btn-midi-stop" style="display:none">■ Stop</button>
+    <button class="midi-btn" id="btn-midi-play" disabled><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-play"></use></svg> Play Bach</button>
+    <button class="midi-btn stop-btn" id="btn-midi-stop" style="display:none"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-stop"></use></svg> Stop</button>
     <div class="midi-progress-wrap" style="flex:1;min-width:60px;max-width:120px"><div class="midi-progress-bar" id="midi-prog"></div></div>
     <span class="seq-lbl">Speed</span>
     <input type="range" class="seq-sl" id="midi-speed" min="0.25" max="2" step="0.05" value="1" style="width:60px">
@@ -61,8 +61,8 @@
 
   <!-- Transport at top -->
   <div class="transport-box" style="margin-top:0;margin-bottom:10px">
-    <button class="big-play-btn" id="btn-seq-play" title="Play">▶ Play</button>
-    <button class="big-stop-btn" id="btn-seq-stop" title="Stop" style="display:none">■ Stop</button>
+    <button class="big-play-btn" id="btn-seq-play" title="Play"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg> Play</button>
+    <button class="big-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg> Stop</button>
   </div>
 
   <div class="control-group">
@@ -94,13 +94,15 @@
     </div>
   </div>
 
-  <div class="legend">
-    <div class="legend-item"><div class="ld" style="background:#f59e0b;box-shadow:0 0 4px rgba(245,158,11,0.5)"></div>Root note</div>
-    <div class="legend-item"><div class="ld" style="background:#a78bfa;box-shadow:0 0 4px rgba(167,139,250,0.4)"></div>Scale note</div>
-    <div class="legend-item"><div class="ld" style="background:#34d399;box-shadow:0 0 4px rgba(52,211,153,0.4)"></div>Chord note</div>
-    <div class="legend-item"><div class="ld" style="background:rgba(255,255,255,0.16)"></div>Out of scale</div>
-    <div class="legend-item"><div class="ll" style="background:rgba(167,139,250,0.5)"></div>Scale polygon</div>
-    <div class="legend-item"><div class="ll" style="background:#34d399"></div>Chord shape</div>
+  <div class="legend" style="gap:2px">
+    <div class="legend-item"><div class="ld" style="background:#f59e0b;box-shadow:0 0 4px rgba(245,158,11,0.5)"></div>Scale Root</div>
+    <div class="legend-item"><div class="ld" style="background:var(--accent);box-shadow:0 0 4px rgba(var(--accent-rgb),0.4)"></div>Scale note</div>
+    <div class="legend-item"><div class="ll" style="background:rgba(var(--accent-rgb),0.5)"></div>Scale polygon</div>
+    <div style="margin-top:4px; font-size:0.6rem; color:var(--text); opacity:0.6; text-transform:uppercase">Chord Intervals</div>
+    <div class="legend-item"><div class="ld" style="background:#ef4444;box-shadow:0 0 4px #ef4444"></div>Root</div>
+    <div class="legend-item"><div class="ld" style="background:#eab308;box-shadow:0 0 4px #eab308"></div>3rd</div>
+    <div class="legend-item"><div class="ld" style="background:#3b82f6;box-shadow:0 0 4px #3b82f6"></div>5th</div>
+    <div class="legend-item"><div class="ld" style="background:#10b981;box-shadow:0 0 4px #10b981"></div>7th / Extensions</div>
   </div>
 
 </div>
@@ -165,9 +167,9 @@
       <button class="midi-btn" id="btn-seq-clear" title="Clear grid">✕ Clear</button>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Source</span>
-      <button class="midi-btn seq-src-btn active" id="seq-src-synth">⊞ Synth</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-wave">〜 Wave</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-sample">⬆ Sample</button>
+      <button class="midi-btn seq-src-btn active" id="seq-src-synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth</button>
+      <button class="midi-btn seq-src-btn" id="seq-src-wave"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-vibrato-rate"></use></svg> Wave</button>
+      <button class="midi-btn seq-src-btn" id="seq-src-sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-attack"></use></svg> Sample</button>
     </div>
     <!-- Wave draw bar -->
     <div id="seq-wave-bar" class="seq-extra-bar" style="display:none">
@@ -224,19 +226,19 @@
     <!-- Volume faders (vertical, mixing-desk style) -->
     <div class="mix-fader-row">
       <div class="mix-channel">
-        <span class="syn-label" style="color:var(--accent4)">🎵 Melody</span>
+        <span class="syn-label" style="color:var(--accent4)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-melody"></use></svg> Melody</span>
         <canvas class="mix-fader-cvs" id="mix-fader-melody"></canvas>
         <span class="syn-val" id="mix-mel-val">100%</span>
         <input type="range" id="mix-melody" min="0" max="150" step="1" value="100" style="display:none">
       </div>
       <div class="mix-channel">
-        <span class="syn-label" style="color:var(--accent2)">🥁 Drums</span>
+        <span class="syn-label" style="color:var(--accent2)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-drums"></use></svg> Drums</span>
         <canvas class="mix-fader-cvs" id="mix-fader-drums"></canvas>
         <span class="syn-val" id="mix-drm-val">100%</span>
         <input type="range" id="mix-drums" min="0" max="150" step="1" value="100" style="display:none">
       </div>
       <div class="mix-channel mix-channel-master">
-        <span class="syn-label" style="color:var(--accent)">🔊 Master</span>
+        <span class="syn-label" style="color:var(--accent)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg> Master</span>
         <canvas class="mix-fader-cvs" id="mix-fader-master"></canvas>
         <span class="syn-val" id="mix-master-val">55%</span>
         <input type="range" id="mix-master" min="0" max="100" step="1" value="55" style="display:none">
@@ -244,32 +246,32 @@
     </div>
     <!-- Effects (canvas vis-ctrl injected by JS) -->
     <div class="syn-group">
-      <span class="syn-label">🌊 Reverb</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-reverb"></use></svg> Reverb</span>
       <span class="syn-val" id="mix-rev-val">10%</span>
       <input type="range" class="syn-slider" id="mix-reverb" min="0" max="80" step="1" value="10">
     </div>
     <div class="syn-group">
-      <span class="syn-label">🔥 Drive</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-drive"></use></svg> Drive</span>
       <span class="syn-val" id="mix-dist-val">0%</span>
       <input type="range" class="syn-slider" id="mix-dist" min="0" max="100" step="1" value="0">
     </div>
     <div class="syn-group">
-      <span class="syn-label">🔁 Delay</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-delay"></use></svg> Delay</span>
       <span class="syn-val" id="mix-dly-val">0%</span>
       <input type="range" class="syn-slider" id="mix-delay-wet" min="0" max="80" step="1" value="0">
     </div>
     <div class="syn-group">
-      <span class="syn-label">⏱ Dly Time</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-vibrato-rate"></use></svg> Dly Time</span>
       <span class="syn-val" id="mix-dlt-val">250ms</span>
       <input type="range" class="syn-slider" id="mix-delay-time" min="30" max="800" step="10" value="250">
     </div>
     <div class="syn-group">
-      <span class="syn-label">↩ Dly FB</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-feedback"></use></svg> Dly FB</span>
       <span class="syn-val" id="mix-dfb-val">30%</span>
       <input type="range" class="syn-slider" id="mix-delay-fb" min="0" max="90" step="1" value="30">
     </div>
     <div class="syn-group">
-      <span class="syn-label" style="color:rgba(251,146,60,0.85)">🎛 Filter</span>
+      <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-filter"></use></svg> Filter</span>
       <div style="display:flex;gap:3px;margin-top:4px">
         <button class="preset-btn active" id="gflt-lp" data-type="lowpass">LP</button>
         <button class="preset-btn" id="gflt-bp" data-type="bandpass">BP</button>
@@ -277,12 +279,12 @@
       </div>
     </div>
     <div class="syn-group">
-      <span class="syn-label" style="color:rgba(251,146,60,0.85)">✂ Cutoff</span>
+      <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-cutoff"></use></svg> Cutoff</span>
       <span class="syn-val" id="mix-gflt-val" style="color:#fb923c">Open</span>
       <input type="range" class="syn-slider" id="mix-gflt-cut" min="0" max="100" step="0.5" value="100">
     </div>
     <div class="syn-group">
-      <span class="syn-label" style="color:rgba(251,146,60,0.85)">〰 Reso</span>
+      <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-resonance"></use></svg> Reso</span>
       <span class="syn-val" id="mix-gflt-res-val" style="color:#fb923c">0.7</span>
       <input type="range" class="syn-slider" id="mix-gflt-res" min="0.1" max="20" step="0.1" value="0.7">
     </div>
@@ -309,47 +311,47 @@
       </div>
     </div>
     <div class="syn-group">
-      <span class="syn-label">⬆ Attack</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-attack"></use></svg> Attack</span>
       <span class="syn-val" id="syn-atk-val">8ms</span>
       <input type="range" class="syn-slider" id="syn-attack" min="1" max="500" step="1" value="8">
     </div>
     <div class="syn-group">
-      <span class="syn-label">⬇ Decay</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-decay"></use></svg> Decay</span>
       <span class="syn-val" id="syn-dec-val">0.30s</span>
       <input type="range" class="syn-slider" id="syn-decay" min="50" max="5000" step="10" value="300">
     </div>
     <div class="syn-group">
-      <span class="syn-label">✂ Filter</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-cutoff"></use></svg> Filter</span>
       <span class="syn-val" id="syn-flt-val">4.0kHz</span>
       <input type="range" class="syn-slider" id="syn-filter" min="200" max="12000" step="50" value="4000">
     </div>
     <div class="syn-group">
-      <span class="syn-label">〰 Reso</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-resonance"></use></svg> Reso</span>
       <span class="syn-val" id="syn-res-val">1.0</span>
       <input type="range" class="syn-slider" id="syn-res" min="0.1" max="14" step="0.1" value="1">
     </div>
     <div class="syn-group">
-      <span class="syn-label">〜 Vib Rate</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-vibrato-rate"></use></svg> Vib Rate</span>
       <span class="syn-val" id="syn-vbr-val">5.5Hz</span>
       <input type="range" class="syn-slider" id="syn-vib-rate" min="0.5" max="12" step="0.1" value="5.5">
     </div>
     <div class="syn-group">
-      <span class="syn-label">↕ Vib Depth</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-vibrato-depth"></use></svg> Vib Depth</span>
       <span class="syn-val" id="syn-vbd-val">0¢</span>
       <input type="range" class="syn-slider" id="syn-vib-depth" min="0" max="60" step="1" value="0">
     </div>
     <div class="syn-group">
-      <span class="syn-label">⊘ Sustain</span>
+      <span class="syn-label"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-stop"></use></svg> Sustain</span>
       <span class="syn-val" id="syn-sus-val">62%</span>
       <input type="range" class="syn-slider" id="syn-sustain" min="0" max="100" step="1" value="62">
     </div>
     <div class="syn-group">
-      <span class="syn-label">⊕ Detune</span>
+      <span class="syn-label"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-drive"></use></svg> Detune</span>
       <span class="syn-val" id="syn-det-val">0¢</span>
       <input type="range" class="syn-slider" id="syn-detune" min="-100" max="100" step="1" value="0">
     </div>
     <div class="syn-group">
-      <span class="syn-label">∿ Harmonics</span>
+      <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-vibrato-rate"></use></svg> Harmonics</span>
       <span class="syn-val" id="syn-harm-val">6</span>
       <input type="range" class="syn-slider" id="syn-harmonics" min="1" max="8" step="1" value="6">
     </div>
@@ -360,9 +362,23 @@
 <div id="fretboard-wrap">
   <div class="fb-panel">
     <div class="fb-header">
-      <span class="section-title" style="margin:0;border:none;padding:0">🎸 Guitar Fretboard</span>
-      <span class="control-label" style="margin:0">Tuning</span>
+      <span class="section-title" style="margin:0;border:none;padding:0;display:flex;align-items:center;gap:4px;"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-fretboard"></use></svg> Guitar Fretboard</span>
+      <span class="control-label" style="margin:0;margin-left:14px">Mode</span>
+      <select class="sm" id="sel-fb-mode">
+        <option value="both">Scale & Chords</option>
+        <option value="scale">Scale Only</option>
+        <option value="chord">Chords Only</option>
+      </select>
+      <span class="control-label" style="margin:0;margin-left:8px">Tuning</span>
       <select class="sm" id="sel-tuning"></select>
+
+      <div class="fb-pos-controls" id="fb-pos-controls" style="display:flex; align-items:center; margin-left:14px; gap:6px">
+        <span class="control-label" style="margin:0; white-space:nowrap">Position</span>
+        <button class="mob-root-btn" id="btn-fb-pos-prev"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-prev"></use></svg></button>
+        <span id="fb-pos-lbl" style="font-size:0.78rem; color:var(--accent); width:52px; text-align:center; font-weight:700; letter-spacing:0.02em">All</span>
+        <button class="mob-root-btn" id="btn-fb-pos-next"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-next"></use></svg></button>
+      </div>
+
       <span style="font-size:0.62rem;color:rgba(255,255,255,0.28);margin-left:auto">Click fret to play note</span>
     </div>
     <div class="fb-canvas-wrap">
@@ -376,11 +392,11 @@
 
 <!-- ── Mobile compact scale strip (canvas + seq slides; hidden on drums) ── -->
 <div id="mobile-scale-strip">
-  <button class="mob-play-btn" id="mob-btn-play" title="Play">▶</button>
-  <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none">■</button>
-  <button class="mob-root-btn" id="mob-root-prev" title="Previous root">◀</button>
+  <button class="mob-play-btn" id="mob-btn-play" title="Play"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg></button>
+  <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg></button>
+  <button class="mob-root-btn" id="mob-root-prev" title="Previous root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-prev"></use></svg></button>
   <span class="mob-root-lbl" id="mob-root-lbl">C</span>
-  <button class="mob-root-btn" id="mob-root-next" title="Next root">▶</button>
+  <button class="mob-root-btn" id="mob-root-next" title="Next root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-next"></use></svg></button>
   <select id="mob-temp-sel" class="mob-sel"></select>
   <select id="mob-family-sel" class="mob-sel"></select>
   <select id="mob-scale-sel" class="mob-sel" style="flex:1"></select>

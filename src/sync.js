@@ -1,78 +1,77 @@
 // ═══════════════════════════════════════════════════════════════════
-// WORLD CLOCK SYNC
+// WORLD CLOCK SYNC — high-precision NTP client
 // ═══════════════════════════════════════════════════════════════════
 //
-// Problem: each browser tab has its own AudioContext clock that drifts
-// independently and can't be shared. We need a single authoritative
-// "what time is it right now" that both instances agree on.
+// Clock offset strategy: minimum-RTT filtering
+// ─────────────────────────────────────────────
+// The NTP offset formula gives: offset = ((t2-t1) + (t3-t4)) / 2
+// This is only unbiased when the network delay is perfectly symmetric.
+// Asymmetric delay (queuing on one direction) biases the estimate by
+// half the asymmetry — so we can't fully eliminate it in software.
 //
-// Solution: use the server's Date.now() as the shared reference.
-//   sharedNow() ≈ serverTime = Date.now() + smoothedOffset
+// The minimum-RTT sample has the smallest total asymmetry bias,
+// because both legs saw the least queuing delay simultaneously.
+// Strategy: collect many samples, keep a cluster around the minimum
+// RTT, and use the median offset of that cluster.
 //
-// The offset (local clock vs server clock) is measured with NTP-style
-// round-trip pings and updated every PING_INTERVAL ms. Each new sample
-// is blended into a running EWMA so transient spikes (GC pause, OS
-// scheduling burst) don't yank the clock.
-//
-// epochMs is the server-time millisecond at which "beat 0" occurred.
-// Any instance, at any time, can independently compute:
-//   worldElapsed = (sharedNow() - epochMs) / 1000   [seconds]
-//   displayStep  = floor((worldElapsed % loopDur) / stepDur) % loopLen
-//
-// This self-corrects on every tick — no accumulated drift.
+// Boot: 32 pings at 25ms → done in ~800ms, gives a tight initial estimate.
+// Maintenance: every 5s, 4 pings; update only when new RTT is competitive.
 // ═══════════════════════════════════════════════════════════════════
 
-const PING_INTERVAL  = 10_000;  // ms between periodic NTP probes
-const PINGS_AT_BOOT  = 8;       // burst on connect for fast initial calibration
-const PING_BOOT_GAP  = 150;     // ms between boot pings
-const EWMA_ALPHA     = 0.15;    // weight of newest sample (lower = smoother)
-const HISTORY_SIZE   = 20;      // rolling window for median-of-best selection
+const BOOT_PINGS      = 32;    // pings on connect
+const BOOT_GAP_MS     = 25;    // ms between boot pings  (~800ms total)
+const MAINT_INTERVAL  = 5_000; // ms between maintenance bursts
+const MAINT_PINGS     = 4;     // pings per maintenance burst
+const MAINT_GAP_MS    = 80;    // ms between maintenance pings
+const HISTORY_SIZE    = 64;    // max samples kept
+const BEST_CLUSTER    = 0.15;  // include samples within 15% of min RTT
 
 // ── State ──────────────────────────────────────────────────────────
 
-let _ws            = null;
-let _url           = null;
-let _onMessage     = null;      // (msg) => void — called for non-NTP messages
-let _onConnect     = null;      // () => void
-let _onDisconnect  = null;      // () => void
+let _ws           = null;
+let _url          = null;
+let _onMessage    = null;
+let _onConnect    = null;
+let _onDisconnect = null;
+let _onOffset     = null;    // called whenever the offset estimate changes
 
-let smoothedOffset = 0;         // ms: sharedNow() = Date.now() + smoothedOffset
-let _history       = [];        // { rtt, offset }[]
-let _connected     = false;
-let _pingTimer     = null;
+let _connected    = false;
+let _history      = [];      // { rtt, offset }[]
+let _bestRtt      = Infinity;
+let _maintTimer   = null;
+
+// The offset (ms) to add to Date.now() to approximate server time.
+// Public: read via sharedNow(). Updated after every burst.
+let _offset       = 0;
 
 // ── Public API ─────────────────────────────────────────────────────
 
-/** Server-synchronised wall clock (ms). Use instead of Date.now() for beat math. */
+/** Server-synchronised wall clock (ms, float). */
 export function sharedNow() {
-  return Date.now() + smoothedOffset;
+  return performance.now() + _offset;
+  // performance.now() is monotonic and has sub-ms resolution.
+  // _offset calibrates it to server wall-clock time.
 }
 
-/** Current estimated clock offset (local → server, ms). Exposed for debugging. */
-export function clockOffset() {
-  return smoothedOffset;
-}
-
-export function isConnected() {
-  return _connected;
-}
+export function clockOffset()  { return _offset; }
+export function isConnected()  { return _connected; }
 
 /**
- * Open a connection to the sync server.
- * @param {string}   url          ws:// or wss:// address
- * @param {Function} onMessage    called for every non-NTP message received
+ * @param {string}   url
+ * @param {Function} onMessage       — called for non-NTP messages
  * @param {Function} [onConnect]
  * @param {Function} [onDisconnect]
+ * @param {Function} [onOffsetChange] — called with new offset (ms) after each burst
  */
-export function connect(url, onMessage, onConnect, onDisconnect) {
-  _url           = url;
-  _onMessage     = onMessage;
-  _onConnect     = onConnect;
-  _onDisconnect  = onDisconnect;
+export function connect(url, onMessage, onConnect, onDisconnect, onOffsetChange) {
+  _url          = url;
+  _onMessage    = onMessage;
+  _onConnect    = onConnect;
+  _onDisconnect = onDisconnect;
+  _onOffset     = onOffsetChange;
   _open();
 }
 
-/** Send a message to all other peers (no-op if not connected). */
 export function send(msg) {
   if (_ws && _ws.readyState === WebSocket.OPEN) {
     _ws.send(JSON.stringify(msg));
@@ -83,37 +82,29 @@ export function send(msg) {
 
 function _open() {
   if (_ws) { try { _ws.close(); } catch {} }
-
   _ws = new WebSocket(_url);
 
   _ws.addEventListener('open', () => {
     _connected = true;
+    _history   = [];
+    _bestRtt   = Infinity;
     console.log('[sync] connected to', _url);
 
-    // Burst pings for fast initial calibration
-    let count = 0;
-    const boot = setInterval(() => {
-      _ping();
-      if (++count >= PINGS_AT_BOOT) clearInterval(boot);
-    }, PING_BOOT_GAP);
-
-    // Periodic maintenance pings
-    _pingTimer = setInterval(_ping, PING_INTERVAL);
-
+    _runBurst(BOOT_PINGS, BOOT_GAP_MS);
+    _maintTimer = setInterval(() => _runBurst(MAINT_PINGS, MAINT_GAP_MS), MAINT_INTERVAL);
     _onConnect?.();
   });
 
   _ws.addEventListener('message', e => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
-
     if (msg.type === 'PONG') { _handlePong(msg); return; }
     _onMessage?.(msg);
   });
 
   _ws.addEventListener('close', () => {
     _connected = false;
-    clearInterval(_pingTimer);
+    clearInterval(_maintTimer);
     console.log('[sync] disconnected — retrying in 2s');
     _onDisconnect?.();
     setTimeout(_open, 2000);
@@ -124,31 +115,56 @@ function _open() {
 
 // ── NTP ────────────────────────────────────────────────────────────
 
+function _runBurst(count, gapMs) {
+  let i = 0;
+  const iv = setInterval(() => {
+    _ping();
+    if (++i >= count) clearInterval(iv);
+  }, gapMs);
+}
+
 function _ping() {
   if (!_connected) return;
-  _ws.send(JSON.stringify({ type: 'PING', t1: Date.now() }));
+  // Use performance.now() for the send timestamp — same clock as sharedNow()
+  _ws.send(JSON.stringify({ type: 'PING', t1: performance.now() }));
 }
 
 function _handlePong({ t1, t2, t3 }) {
-  const t4  = Date.now();
-  const rtt    = (t4 - t1) - (t3 - t2);   // pure network round-trip (ms)
-  const offset = ((t2 - t1) + (t3 - t4)) / 2;  // classic NTP offset formula
+  const t4  = performance.now();
+
+  // RTT = total round-trip minus server processing time
+  const rtt    = (t4 - t1) - (t3 - t2);
+  // Classic NTP offset: (server_receive - client_send + server_send - client_receive) / 2
+  // t2, t3 are server wall-clock (ms), t1, t4 are client performance.now() (ms).
+  // _offset converts performance.now() → server wall-clock, so:
+  //   offset = ((t2 - t1) + (t3 - t4)) / 2   [in ms]
+  const offset = ((t2 - t1) + (t3 - t4)) / 2;
+
+  if (rtt < 0) return;  // clock anomaly, discard
 
   _history.push({ rtt, offset });
   if (_history.length > HISTORY_SIZE) _history.shift();
 
-  // Use median offset from the half of samples with lowest RTT.
-  // High-RTT samples carry more asymmetric delay noise, so we discard them.
-  const sorted = [..._history].sort((a, b) => a.rtt - b.rtt);
-  const best   = sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 2)));
-  const medianOffset = best.reduce((s, x) => s + x.offset, 0) / best.length;
+  // Update best RTT
+  if (rtt < _bestRtt) _bestRtt = rtt;
 
-  // Blend into EWMA — converges fast at boot (few samples), then becomes stable
-  smoothedOffset = _history.length < 3
-    ? medianOffset
-    : EWMA_ALPHA * medianOffset + (1 - EWMA_ALPHA) * smoothedOffset;
+  // Cluster: all samples with RTT within BEST_CLUSTER fraction of the minimum
+  const threshold = _bestRtt * (1 + BEST_CLUSTER);
+  const cluster   = _history.filter(s => s.rtt <= threshold);
 
-  if (_history.length <= PINGS_AT_BOOT) {
-    console.log(`[sync] NTP offset=${smoothedOffset.toFixed(1)}ms  rtt=${rtt}ms`);
-  }
+  // Use median offset of the best cluster (robust against outliers)
+  cluster.sort((a, b) => a.offset - b.offset);
+  const mid = Math.floor(cluster.length / 2);
+  const newOffset = cluster.length % 2
+    ? cluster[mid].offset
+    : (cluster[mid - 1].offset + cluster[mid].offset) / 2;
+
+  _offset = newOffset;
+  _onOffset?.(newOffset);
+
+  const settled = _history.length >= 8;
+  console.log(
+    `[sync] rtt=${rtt.toFixed(2)}ms  offset=${_offset.toFixed(3)}ms` +
+    (settled ? '' : `  (calibrating, ${_history.length}/${BOOT_PINGS})`),
+  );
 }

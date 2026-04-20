@@ -1,14 +1,28 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0b0b18;
-  --surface: #12121f;
-  --border: rgba(255,255,255,0.07);
-  --accent: #a78bfa;
-  --accent2: #34d399;
-  --accent3: #f59e0b;
-  --accent4: #60a5fa;
-  --text: #e2e2f0;
+  /* ========================================================
+   * KANDISKEY COLOR PALETTE
+   * Inspired by Wassily Kandinsky (Blue, Yellow, Red)
+   * Update these values to quickly change the entire app!
+   * ======================================================== */
+  --bg: #0d0d16;
+  --surface: #151522;
+  --border: rgba(255,255,255,0.08);
+
+  /* Solid Colors */
+  --accent:  #2563eb;  /* Blue (deep, spiritual) */
+  --accent2: #facc15;  /* Yellow (bright, earthy) */
+  --accent3: #ef4444;  /* Red (strong, restless) */
+  --accent4: #10b981;  /* Green (calm, passive) */
+
+  /* RGB Values for translucency (must match solid ones) */
+  --accent-rgb:  37, 99, 235;
+  --accent2-rgb: 250, 204, 21;
+  --accent3-rgb: 239, 68, 68;
+  --accent4-rgb: 16, 185, 129;
+
+  --text: #f0f0f5;
 }
 
 html, body {
@@ -41,7 +55,7 @@ header {
 header h1 {
   font-size: 1.1rem;
   font-weight: 700;
-  background: linear-gradient(120deg, #a78bfa 0%, #60a5fa 50%, #34d399 100%);
+  background: linear-gradient(120deg, var(--accent) 0%, var(--accent4) 50%, var(--accent2) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -72,14 +86,14 @@ header p { display: none; }
 .tour-sensei { font-size: 3.5rem; margin-bottom: 14px; }
 .tour-modal h2 {
   font-size: 1.3rem; font-weight: 700;
-  background: linear-gradient(120deg, #a78bfa, #60a5fa);
+  background: linear-gradient(120deg, var(--accent), var(--accent4));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   margin-bottom: 12px;
 }
 .tour-modal p { font-size: 0.88rem; color: rgba(255,255,255,0.6); line-height: 1.7; margin-bottom: 24px; }
 .tour-cta {
   padding: 10px 28px;
-  background: linear-gradient(135deg, #a78bfa, #60a5fa);
+  background: linear-gradient(135deg, var(--accent), var(--accent4));
   border: none; border-radius: 24px;
   color: #fff; font-size: 0.88rem; font-weight: 600;
   cursor: pointer; transition: opacity 0.2s;
@@ -156,19 +170,26 @@ header p { display: none; }
   border-color: rgba(245,158,11,0.35);
   color: var(--accent3);
 }
-.hdr-icon { font-size: 1rem; line-height: 1; }
+.hdr-icon { font-size: 1rem; line-height: 1; width: 1.25em; height: 1.25em; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.syn-label svg.hdr-icon { width: 1.2em; height: 1.2em; }
 
 /* ── SYNTH PANEL ── */
 #synth-wrap {
   flex-shrink: 0;
-  height: 0;
+  max-height: 0;
   overflow: hidden;
-  transition: height 0.3s cubic-bezier(0.4,0,0.2,1);
+  transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), border-color 0.3s;
   border-top: 1px solid transparent;
 }
-#synth-wrap.open  { height: 92px; border-top-color: var(--border); }
-#mixer-wrap { flex-shrink:0; height:0; overflow:hidden; transition:height 0.3s cubic-bezier(0.4,0,0.2,1); border-top:1px solid transparent; }
-#mixer-wrap.open  { height: 168px; border-top-color: var(--border); }
+#synth-wrap.open  { max-height: 400px; border-top-color: var(--border); }
+#mixer-wrap { 
+  flex-shrink: 0; 
+  max-height: 0; 
+  overflow: hidden; 
+  transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), border-color 0.3s; 
+  border-top: 1px solid transparent; 
+}
+#mixer-wrap.open  { max-height: 400px; border-top-color: var(--border); }
 
 /* Mixer fader channels */
 .mix-fader-row {
@@ -205,6 +226,21 @@ header p { display: none; }
   margin-left: 4px;
 }
 
+/* ── SYNTH + MIXER CANVAS CONTROLS (desktop + mobile) ── */
+#mixer-wrap .syn-group .syn-slider { display: none; }
+.vis-ctrl {
+  display: block;
+  width: 76px;
+  height: 50px;
+  cursor: ew-resize;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(0,0,0,0.25);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* ── SEQUENCER + DRUMS ── */
 #seq-wrap, #drum-wrap {
   flex-shrink: 0;
@@ -237,13 +273,14 @@ header p { display: none; }
 .hdr-btn.active-mixer { background:rgba(96,165,250,0.12); border-color:rgba(96,165,250,0.35); color:var(--accent4); }
 .mix-sep { width:1px; height:60px; background:rgba(255,255,255,0.1); margin:0 4px; flex-shrink:0; align-self:center; }
 .synth-panel {
-  height: 100%;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   background: rgba(10,8,22,0.95);
-  padding: 6px 16px;
+  padding: 8px 16px;
   gap: 0;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 .syn-group {
   display: flex;
@@ -256,7 +293,7 @@ header p { display: none; }
 }
 .syn-group:first-child { padding-left: 0; }
 .syn-group:last-child  { border-right: none; }
-.syn-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.32); }
+.syn-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.32); display: flex; align-items: center; gap: 4px; justify-content: center; }
 .syn-val   { font-size: 0.7rem; color: var(--accent3); font-family: monospace; min-width: 42px; text-align: center; }
 .syn-slider {
   -webkit-appearance: none; appearance: none;
@@ -582,6 +619,7 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
 .big-play-btn {
   flex: 1;
   padding: 10px 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   background: linear-gradient(135deg, rgba(52,211,153,0.18), rgba(52,211,153,0.08));
   border: 1px solid rgba(52,211,153,0.45);
   border-radius: 10px;
@@ -596,6 +634,7 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
 .big-stop-btn {
   flex: 1;
   padding: 10px 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   background: linear-gradient(135deg, rgba(239,68,68,0.16), rgba(239,68,68,0.06));
   border: 1px solid rgba(239,68,68,0.45);
   border-radius: 10px;
@@ -780,6 +819,7 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
     inset: 0 !important;
     z-index: 700;
     height: 100% !important;
+    max-height: none !important;
     width: 100% !important;
     left: 0 !important;
     bottom: 0 !important;
@@ -906,23 +946,8 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   }
   .mob-panel-close:active { background: rgba(255,255,255,0.14); }
 
-  /* Visual canvas controls (synth) */
-  .vis-ctrl {
-    display: block;
-    width: 100%;
-    height: 50px;
-    cursor: ew-resize;
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.09);
-    background: rgba(0,0,0,0.25);
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-
-  /* Full-width sliders in mixer overlay (hidden behind vis-ctrl) */
-  #mixer-wrap .syn-slider { display: none; }
-  #mixer-wrap .mix-vis-ctrl { width: 100%; }
+  /* Canvas controls: full width on mobile */
+  .vis-ctrl { width: 100%; }
 
   /* Fretboard: full width, above strip */
   #fretboard-wrap {
