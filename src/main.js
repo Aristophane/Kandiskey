@@ -1916,104 +1916,87 @@ const seqEngine = {
     const dur     = seqStepDur();
     const melLoop = Math.max(1, Math.min(SEQ.loopLen,  seqSteps()));
     const drmLoop = Math.max(1, Math.min(drumLoopLen,  seqSteps()));
-    const loopLen = Math.max(melLoop, drmLoop); // master counter covers both
-    const melDur  = melLoop * dur;
-    const drmDur  = drmLoop * dur;
+    const loopLen = Math.max(melLoop, drmLoop);
     const now     = audio.actx.currentTime;
 
-    // ── Audio scheduling ────────────────────────────────────────────
-    // _barJoining: suppress audio until next bar boundary after phase-lock join
-    if (this._barJoining && this.nextTime <= now + LOOK) {
-      this._barJoining = false;
-    }
-    if (!this._barJoining) {
+    if (epochMs !== null) {
+      const worldNow   = sharedNow();
+      const elapsed    = (worldNow - epochMs) / 1000;
+
+      // Display step always follows world clock (same on every device)
+      const globalStep     = Math.max(0, Math.floor(elapsed / dur));
+      this.displayStep     = globalStep % melLoop;
+      this.drumDisplayStep = globalStep % drmLoop;
+
+      // Bar-join: hold audio until the next loop-boundary enters the look-ahead window
+      if (this._barJoining) {
+        const nextBarStep   = Math.ceil((globalStep + 1) / loopLen) * loopLen;
+        const nextBarAudioT = now + (epochMs + nextBarStep * dur * 1000 - worldNow) / 1000;
+        if (nextBarAudioT <= now + LOOK) {
+          this._barJoining = false;
+          this._lastSched  = nextBarStep - 1;
+        }
+        return;
+      }
+
+      if (this._lastSched === undefined) this._lastSched = globalStep - 1;
+
+      // Schedule every step whose world-clock audio time falls in [now-50ms, now+LOOK].
+      // Audio time is derived directly from epochMs, so both devices get the exact same
+      // schedule time for every step — no accumulation drift.
+      for (let guard = 0; guard < 32; guard++) {
+        const stepIdx = this._lastSched + 1;
+        const audioT  = now + (epochMs + stepIdx * dur * 1000 - worldNow) / 1000;
+        if (audioT > now + LOOK) break;
+        if (audioT < now - 0.05) { this._lastSched = stepIdx; continue; } // too late, skip
+        this._playStep(stepIdx % melLoop, audioT);
+        drumPlayStep(stepIdx % drmLoop,   audioT);
+        this._lastSched = stepIdx;
+      }
+
+    } else {
+      // Standalone (no sync): local audio clock accumulator
+      const melDur = melLoop * dur;
+      const drmDur = drmLoop * dur;
       while (this.nextTime < now + LOOK) {
         this._playStep(this.step % melLoop, this.nextTime);
-        drumPlayStep(this.step % drmLoop,   this.nextTime); // drum hits pre-scheduled here
+        drumPlayStep(this.step % drmLoop,   this.nextTime);
         this.nextTime += dur;
         this.step = (this.step + 1) % loopLen;
       }
-    }
-
-    // ── Display steps ────────────────────────────────────────────────
-    if (epochMs !== null) {
-      // World clock: both instances show the same step at the same moment
-      const worldElapsed   = (sharedNow() - epochMs) / 1000;
-      this.displayStep     = worldElapsed < 0 ? 0 : Math.floor((worldElapsed % melDur) / dur) % melLoop;
-      this.drumDisplayStep = worldElapsed < 0 ? 0 : Math.floor((worldElapsed % drmDur) / dur) % drmLoop;
-
-      // ── Periodic audio correction (~every 1 s) ────────────────────
-      if (!this._barJoining) {
-        if (this._corrTick === undefined) this._corrTick = 0;
-        if (++this._corrTick % 50 === 0) {
-          this.startTime = now - worldElapsed;
-          const phaseInStep    = worldElapsed % dur;
-          const targetNextTime = now + (dur - phaseInStep);
-          const drift          = targetNextTime - this.nextTime;
-          if (Math.abs(drift) > 0.001 && Math.abs(drift) < dur * 0.5) {
-            this.nextTime += drift;
-            this.step = (Math.floor((worldElapsed % melDur) / dur) + 1) % loopLen;
-          }
-        }
-      }
-    } else {
-      // Standalone fallback — local audio clock only
-      const elapsed        = now - this.startTime;
-      this.displayStep     = elapsed < 0 ? 0 : Math.floor((elapsed % melDur) / dur) % melLoop;
-      this.drumDisplayStep = elapsed < 0 ? 0 : Math.floor((elapsed % drmDur) / dur) % drmLoop;
+      const e          = now - this.startTime;
+      this.displayStep     = e < 0 ? 0 : Math.floor((e % melDur) / dur) % melLoop;
+      this.drumDisplayStep = e < 0 ? 0 : Math.floor((e % drmDur) / dur) % drmLoop;
     }
   },
 
   play(remoteEpochMs = null) {
+    // Guard against double-interval if play() is called while already running
+    clearInterval(this._ivl);
+    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     if (activeMidiPlayer) { activeMidiPlayer.stop(); activeMidiPlayer = null; }
     audio._resume();
     this.playing = true;
 
     if (remoteEpochMs !== null) {
-      // ── Follower: sync to the remote epoch ────────────────────────
-      epochMs = remoteEpochMs;
-      const dur      = seqStepDur();
-      const loopLen  = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
-      const loopDur  = loopLen * dur;
-      const worldElapsed = Math.max(0, (sharedNow() - epochMs) / 1000);
-      const posInLoop    = worldElapsed % loopDur;
-      this.displayStep   = Math.floor(posInLoop / dur) % loopLen;
-      this.startTime     = audio.actx.currentTime - worldElapsed;
-      // nextTime = audio time of the next unscheduled step boundary
-      const timeToNext   = dur - (posInLoop % dur);
-      this.nextTime      = audio.actx.currentTime + timeToNext;
-      this.step          = (this.displayStep + 1) % loopLen;
+      // ── Follower: adopt the remote epoch; _tick() schedules from world clock
+      epochMs         = remoteEpochMs;
+      this._lastSched = undefined;
     } else if (peerEpochMs !== null) {
-      // ── Bar-quantized join: wait for next bar boundary so step 0 fires
-      // on both instances at the exact same world-clock moment.
-      epochMs = peerEpochMs;
-      const dur          = seqStepDur();
-      const loopLen      = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
-      const loopDur      = loopLen * dur;
-      const worldElapsed = Math.max(0, (sharedNow() - epochMs) / 1000);
-      const posInLoop    = worldElapsed % loopDur;
-      const timeToBar    = loopDur - posInLoop;   // seconds until next bar start
-
-      // displayStep follows world clock immediately (visual feedback)
-      this.displayStep   = Math.floor(posInLoop / dur) % loopLen;
-      this.startTime     = audio.actx.currentTime + timeToBar; // step 0 at bar start
-      this.nextTime      = audio.actx.currentTime + timeToBar; // first audio event
-      this.step          = 0;
-      this._barJoining   = true;   // suppress audio until bar arrives
-      this._corrTick     = 0;
+      // ── Bar-quantized join: _tick() will hold audio until next bar boundary
+      epochMs          = peerEpochMs;
+      this._barJoining = true;
+      this._lastSched  = undefined;
       syncSend({ type: 'JOINED', epochMs, masterBpm, ...syncGetFullState() });
     } else {
-      // ── Leader: no peer playing — create a fresh epoch ────────────
-      epochMs            = sharedNow();
-      masterBpm          = SEQ.bpm;
-      this.step          = 0;
-      this.displayStep   = 0;
-      this.startTime     = audio.actx.currentTime;
-      this.nextTime      = this.startTime + 0.02;
+      // ── Leader: create a fresh epoch aligned to right now
+      epochMs         = sharedNow();
+      masterBpm       = SEQ.bpm;
+      this._lastSched = -1;   // schedule step 0 on first tick
       syncSend({ type: 'PLAY', epochMs, masterBpm, ...syncGetFullState() });
     }
 
-    this._ivl = setInterval(() => { if (this.playing) this._tick(); }, 20);
+    this._ivl = setInterval(() => { if (this.playing) { try { this._tick(); } catch(e) { console.error('[seq] _tick error:', e); } } }, 20);
     const raf = () => { if (!this.playing) return; drawSequencer(); drawDrumMachine(); draw(); this._raf = requestAnimationFrame(raf); };
     this._raf = requestAnimationFrame(raf);
     syncPlayUI(true);
@@ -2022,7 +2005,7 @@ const seqEngine = {
   stop(fromRemote = false) {
     this.playing      = false;
     this._barJoining  = false;
-    this._corrTick    = 0;
+    this._lastSched   = undefined;
     clearInterval(this._ivl);
     if (this._raf) cancelAnimationFrame(this._raf);
     this.displayStep = -1;
@@ -2036,19 +2019,13 @@ const seqEngine = {
 
   rebase(fromRemote = false) { // call when bpm/rhythm changes mid-play
     if (!this.playing) return;
-    const now = audio.actx.currentTime;
-    const loopLen = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
-    this.startTime = now - this.displayStep * seqStepDur();
-    this.nextTime  = now + 0.02;
-    this.step = (this.displayStep + 1) % loopLen;
-    // Shift the epoch so the current step maps correctly at the new tempo
-    if (epochMs !== null) {
-      epochMs = sharedNow() - this.displayStep * seqStepDur() * 1000;
-      if (!fromRemote) {
-        masterBpm = Math.round(SEQ.bpm / syncTempoRatio);
-        syncSend({ type: 'REBASE', epochMs, masterBpm, rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
-      }
+    if (!fromRemote) {
+      epochMs   = sharedNow() - this.displayStep * seqStepDur() * 1000;
+      masterBpm = Math.round(SEQ.bpm / syncTempoRatio);
+      syncSend({ type: 'REBASE', epochMs, masterBpm, rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
     }
+    // Reset scheduler so it re-derives audio times from the (possibly new) epochMs + dur
+    this._lastSched = Math.max(0, this.displayStep) - 1;
   },
 };
 
@@ -4430,6 +4407,7 @@ function syncUpdateUI(msg) {
 }
 
 function syncHandleMessage(msg) {
+  console.log('[sync] rx:', msg.type, msg);
   switch (msg.type) {
 
     case 'PLAY':
