@@ -38,7 +38,7 @@ jobs:
           port: 21
 
           local-dir: ./dist/
-          server-dir: /public_html/thermidorSiteVitrine/
+          server-dir: /thermidorSiteVitrine/
 
           include: |
             tooltovisualisemusic.html
