@@ -28,15 +28,19 @@ jobs:
       - name: Build Vite app
         run: npm run build
 
-      # ✅ Clean deploy folder (important)
+      # ✅ Prepare clean deploy folder from dist
       - name: Prepare deploy folder
         run: |
           rm -rf deploy
           mkdir deploy
-          cp tooltovisualisemusic.html deploy/
-          cp -r dist/assets deploy/
 
-      # ✅ Deploy to correct folder
+          # Copy everything Vite built
+          cp -r dist/* deploy/
+
+          # Remove files you DON'T want to overwrite
+          rm -f deploy/index.html
+
+      # ✅ Deploy to thermidorSiteVitrine
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -49,7 +53,8 @@ jobs:
           local-dir: ./deploy/
           server-dir: thermidorSiteVitrine/
 
-          state-name: none   # 🚨 prevents deletion bugs
+          # 🚨 critical: disables deletion/sync issues
+          state-name: none
 
           exclude: |
             **/.git*
