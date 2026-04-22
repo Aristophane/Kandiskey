@@ -1,4 +1,4 @@
-name: Deploy Vite App
+name: Deploy Vite Partial (SFTP)
 
 on:
   push:
@@ -21,16 +21,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build Vite app
         run: npm run build
 
-      - name: Deploy dist/ to FTP
+      # 👉 Ensure your custom HTML is inside dist
+      - name: Copy custom HTML into dist
+        run: cp tooltovisualisemusic.html dist/
+
+      - name: Deploy ONLY selected files via SFTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          port: 22
           protocol: sftp
+          port: 22
+
           local-dir: ./dist/
-          server-dir: /public_html/
+          server-dir: /public_html/thermidorSiteVitrine/
+
+          include: |
+            tooltovisualisemusic.html
+            assets/**
+
+          exclude: |
+            **/.git*
+            **/node_modules/**
