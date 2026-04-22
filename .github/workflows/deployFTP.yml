@@ -28,14 +28,12 @@ jobs:
       - name: Build Vite app
         run: npm run build
 
-      # 👉 Create clean deploy folder
       - name: Prepare deploy folder
         run: |
           mkdir deploy
           cp tooltovisualisemusic.html deploy/
           cp -r dist/assets deploy/
 
-      # 👉 Deploy ONLY what’s inside /deploy
       - name: Deploy via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -44,12 +42,12 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           port: 21
-      
+
           local-dir: ./deploy/
-          server-dir: thermidorSiteVitrine/
-      
-          state-name: none   # 🚨 THIS FIXES YOUR ISSUE
-      
+          server-dir: ./   # ✅ FIX HERE
+
+          state-name: none
+
           exclude: |
             **/.git*
             **/node_modules/**
