@@ -28,13 +28,16 @@ jobs:
       - name: Build Vite app
         run: npm run build
 
+      # ✅ Clean deploy folder (important)
       - name: Prepare deploy folder
         run: |
+          rm -rf deploy
           mkdir deploy
           cp tooltovisualisemusic.html deploy/
           cp -r dist/assets deploy/
 
-      - name: Deploy via FTPS
+      # ✅ Deploy to correct folder
+      - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -44,9 +47,9 @@ jobs:
           port: 21
 
           local-dir: ./deploy/
-          server-dir: ./   # ✅ FIX HERE
+          server-dir: thermidorSiteVitrine/
 
-          state-name: none
+          state-name: none   # 🚨 prevents deletion bugs
 
           exclude: |
             **/.git*
