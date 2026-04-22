@@ -28,14 +28,14 @@ jobs:
       - name: Copy custom HTML into dist
         run: cp tooltovisualisemusic.html dist/
 
-      - name: Deploy ONLY selected files via SFTP
+      - name: Deploy ONLY selected files via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: sftp
-          port: 22
+          protocol: ftp
+          port: 21
 
           local-dir: ./dist/
           server-dir: /public_html/thermidorSiteVitrine/
