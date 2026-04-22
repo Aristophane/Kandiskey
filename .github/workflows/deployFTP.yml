@@ -46,7 +46,7 @@ jobs:
           port: 21
 
           local-dir: ./deploy/
-          server-dir: /thermidorSiteVitrine/
+          server-dir: thermidorSiteVitrine/
 
           exclude: |
             **/.git*
