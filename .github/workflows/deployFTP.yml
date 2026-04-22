@@ -1,13 +1,17 @@
-name: Deploy Vite Partial (SFTP)
+name: Deploy Vite Partial (FTPS)
 
 on:
   push:
     branches:
       - master
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: Prod
 
     steps:
       - name: Checkout repository
@@ -24,25 +28,25 @@ jobs:
       - name: Build Vite app
         run: npm run build
 
-      # 👉 Ensure your custom HTML is inside dist
-      - name: Copy custom HTML into dist
-        run: cp tooltovisualisemusic.html dist/
+      # 👉 Create clean deploy folder
+      - name: Prepare deploy folder
+        run: |
+          mkdir deploy
+          cp tooltovisualisemusic.html deploy/
+          cp -r dist/assets deploy/
 
-      - name: Deploy ONLY selected files via FTP
+      # 👉 Deploy ONLY what’s inside /deploy
+      - name: Deploy via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftp
+          protocol: ftps
           port: 21
 
-          local-dir: ./dist/
-          server-dir: /thermidorSiteVitrine/
-
-          include: |
-            tooltovisualisemusic.html
-            assets/**
+          local-dir: ./deploy/
+          server-dir: /public_html/thermidorSiteVitrine/
 
           exclude: |
             **/.git*
