@@ -1,11 +1,14 @@
 import { defineConfig } from 'vite'
 
-export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/tooltovisualisemusic/' : '/',
+export default defineConfig({
+  base: './', // ✅ THIS is what you need
   publicDir: 'public',
   build: {
     rollupOptions: {
-      input: { tooltovisualisemusic: 'tooltovisualisemusic.html' },
+      input: {
+        tooltovisualisemusic: 'tooltovisualisemusic.html',
+        learner: 'guitar-learner.html',
+      },
     },
   },
-}))
+})
