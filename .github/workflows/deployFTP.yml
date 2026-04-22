@@ -44,10 +44,12 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           port: 21
-
+      
           local-dir: ./deploy/
           server-dir: thermidorSiteVitrine/
-
+      
+          state-name: none   # 🚨 THIS FIXES YOUR ISSUE
+      
           exclude: |
             **/.git*
             **/node_modules/**
