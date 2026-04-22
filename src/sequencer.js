@@ -17,11 +17,13 @@ import { sharedNow } from './sync.js';
 let _draw            = () => {};
 let _syncSend        = () => {};
 let _syncGetFullState= () => ({});
-let _syncPlayUI      = (playing) => {
-  const play = document.getElementById('btn-seq-play');
-  const stop = document.getElementById('btn-seq-stop');
-  if (play) play.style.display = playing ? 'none' : '';
-  if (stop) stop.style.display = playing ? '' : 'none';
+let _syncPlayUI      = (state) => {
+  const play  = document.getElementById('btn-seq-play');
+  const pause = document.getElementById('btn-seq-pause');
+  const stop  = document.getElementById('btn-seq-stop');
+  if (play)  play.style.display  = state === 'playing' ? 'none' : '';
+  if (pause) pause.style.display = state === 'playing' ? '' : 'none';
+  if (stop)  stop.style.display  = state !== 'stopped' ? '' : 'none';
 };
 let _stopMidiPlayer  = () => {};
 let _drawFretboard   = () => {};
@@ -42,6 +44,8 @@ const seqCtx    = seqCanvas.getContext('2d');
 
 export const seqEngine = {
   playing: false,
+  paused: false,
+  _pausedStep: -1,
   step: 0,
   nextTime: 0,
   startTime: 0,
@@ -129,10 +133,18 @@ export const seqEngine = {
     _stopMidiPlayer();
     audio._resume();
     this.playing = true;
+    this.paused  = false;
 
     if (remoteEpochMs !== null) {
       setEpochMs(remoteEpochMs);
-      this._lastSched = undefined;
+      this._lastSched  = undefined;
+      this._pausedStep = -1;
+    } else if (this._pausedStep >= 0) {
+      // Resume from pause — rebuild epoch so playback continues from the frozen step
+      setEpochMs(sharedNow() - this._pausedStep * seqStepDur() * 1000);
+      this._lastSched  = this._pausedStep - 1;
+      this._pausedStep = -1;
+      _syncSend({ type: 'PLAY', epochMs, masterBpm, ..._syncGetFullState() });
     } else if (peerEpochMs !== null) {
       setEpochMs(peerEpochMs);
       this._barJoining = true;
@@ -156,11 +168,25 @@ export const seqEngine = {
       this._raf = requestAnimationFrame(raf);
     };
     this._raf = requestAnimationFrame(raf);
-    _syncPlayUI(true);
+    _syncPlayUI('playing');
+  },
+
+  pause() {
+    if (!this.playing) return;
+    this.playing     = false;
+    this.paused      = true;
+    this._pausedStep = this.displayStep;
+    clearInterval(this._ivl);
+    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+    _syncPlayUI('paused');
+    drawSequencer();
+    drawDrumMachine();
   },
 
   stop(fromRemote = false) {
     this.playing      = false;
+    this.paused       = false;
+    this._pausedStep  = -1;
     this._barJoining  = false;
     this._lastSched   = undefined;
     clearInterval(this._ivl);
@@ -170,7 +196,7 @@ export const seqEngine = {
     setEpochMs(null);
     setPeerEpochMs(null);
     if (!fromRemote) _syncSend({ type: 'STOP' });
-    _syncPlayUI(false);
+    _syncPlayUI('stopped');
     drawSequencer();
     drawDrumMachine();
   },

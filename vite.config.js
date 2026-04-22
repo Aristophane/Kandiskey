@@ -6,8 +6,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        tooltovisualisemusic: 'tooltovisualisemusic.html',
-        learner: 'guitar-learner.html',
+        tooltovisualisemusic: 'tooltovisualisemusic.html'
       },
     },
   },

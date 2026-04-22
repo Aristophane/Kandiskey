@@ -5,6 +5,7 @@
 import { TEMPERAMENTS, CHROMATIC, CHORDS, MAQAM_CENTS, neutralDegrees } from './data.js';
 import { S, SEQ, getScale, getScaleNotes, midiActiveQuantizedMidi } from './state.js';
 import { audio } from './audio.js';
+import { tunerState } from './tuner.js';
 
 // ── Injected refs ───────────────────────────────────────────────────
 
@@ -316,16 +317,84 @@ export function draw() {
     }
   }
 
-  // Center labels
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = 'bold 19px system-ui'; ctx.fillStyle = '#f59e0b';
-  ctx.fillText(CHROMATIC[S.root], cx, cy - 9);
-  ctx.font = '9.5px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.32)';
-  ctx.fillText(S.scaleName.replace(/\s*\(.*\)/, '').trim(), cx, cy + 9);
-  if (S.chordName !== '— None —') {
-    ctx.font = '8.5px system-ui'; ctx.fillStyle = 'rgba(52,211,153,0.55)';
-    ctx.fillText(CHROMATIC[S.chordRoot] + ' ' + S.chordName, cx, cy + 23);
+  // Tuner overlay
+  if (tunerState.active) {
+    const t = performance.now() / 600;
+    if (tunerState.noteIndex >= 0) {
+      const a = noteAngle(tunerState.noteIndex, temp);
+      const nx = cx + R * Math.cos(a), ny = cy + R * Math.sin(a);
+      const pulse = 0.75 + 0.25 * Math.sin(t * Math.PI * 2);
+      const inTune = Math.abs(tunerState.centsOff) < 5;
+      const nearTune = Math.abs(tunerState.centsOff) < 20;
+      const noteCol = inTune ? '#34d399' : nearTune ? '#f59e0b' : '#ef4444';
+      const gg = ctx.createRadialGradient(nx, ny, 5, nx, ny, 26 * pulse);
+      gg.addColorStop(0, noteCol + 'dd'); gg.addColorStop(1, 'transparent');
+      ctx.beginPath(); ctx.arc(nx, ny, 26 * pulse, 0, Math.PI * 2); ctx.fillStyle = gg; ctx.fill();
+      ctx.beginPath(); ctx.arc(nx, ny, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = noteCol; ctx.lineWidth = 2.5; ctx.setLineDash([]); ctx.stroke();
+
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 34px system-ui'; ctx.fillStyle = noteCol;
+      ctx.fillText(tunerState.noteName, cx, cy - 18);
+      const sign = tunerState.centsOff >= 0 ? '+' : '';
+      ctx.font = 'bold 14px system-ui'; ctx.fillStyle = noteCol;
+      ctx.fillText(`${sign}${tunerState.centsOff.toFixed(1)}¢`, cx, cy + 8);
+
+      // ── Cents gauge ──────────────────────────────────────────────
+      const barW = R * 0.74, barH = 16, barY = cy + 28, barX = cx - barW / 2;
+
+      // Track background
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 8); ctx.fill();
+
+      // Green in-tune zone (±5¢)
+      const zoneW = barW * (10 / 100);
+      ctx.fillStyle = 'rgba(52,211,153,0.22)';
+      ctx.fillRect(cx - zoneW / 2, barY, zoneW, barH);
+
+      // Tick marks at ±50, ±25, 0
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      [-50, -25, 0, 25, 50].forEach(c => {
+        const tx = cx + (c / 50) * (barW / 2);
+        const isCenter = c === 0;
+        const tickH = isCenter ? barH : barH * 0.55;
+        ctx.fillStyle = isCenter ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.2)';
+        ctx.fillRect(tx - (isCenter ? 1.5 : 1), barY + (barH - tickH) / 2, isCenter ? 3 : 2, tickH);
+        if (c !== -25 && c !== 25) {
+          ctx.font = '9px system-ui';
+          ctx.fillStyle = 'rgba(255,255,255,0.28)';
+          ctx.fillText(c === 0 ? '0' : (c > 0 ? `+${c}¢` : `${c}¢`), tx, barY + barH + 3);
+        }
+      });
+
+      // Needle (glowing)
+      const clampedCents = Math.max(-50, Math.min(50, tunerState.centsOff));
+      const needleX = cx + (clampedCents / 50) * (barW / 2);
+      ctx.shadowColor = noteCol; ctx.shadowBlur = 12;
+      ctx.fillStyle = noteCol;
+      ctx.beginPath(); ctx.roundRect(needleX - 5, barY - 6, 10, barH + 12, 4); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      const pulse = 0.5 + 0.5 * Math.abs(Math.sin(t * Math.PI));
+      ctx.beginPath(); ctx.arc(cx, cy, R * 0.18, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(167,139,250,${0.35 * pulse})`; ctx.lineWidth = 2; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '13px system-ui'; ctx.fillStyle = `rgba(167,139,250,${0.5 + 0.4 * pulse})`;
+      ctx.fillText('🎙 listening…', cx, cy);
+    }
+  } else {
+    // Center labels
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 19px system-ui'; ctx.fillStyle = '#f59e0b';
+    ctx.fillText(CHROMATIC[S.root], cx, cy - 9);
+    ctx.font = '9.5px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.32)';
+    ctx.fillText(S.scaleName.replace(/\s*\(.*\)/, '').trim(), cx, cy + 9);
+    if (S.chordName !== '— None —') {
+      ctx.font = '8.5px system-ui'; ctx.fillStyle = 'rgba(52,211,153,0.55)';
+      ctx.fillText(CHROMATIC[S.chordRoot] + ' ' + S.chordName, cx, cy + 23);
+    }
   }
+
   if (document.getElementById('seq-wrap').classList.contains('open')) _drawSequencer();
 }
 

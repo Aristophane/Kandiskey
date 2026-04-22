@@ -441,12 +441,26 @@ export const DRUM_SOUND_BANKS = {
   }
   // Add more banks here — each needs: name, keys (array), labels (object), samples (b64 object)
 };
+window.DRUM_SOUND_BANKS = DRUM_SOUND_BANKS;
+
 export let activeDrumBank = 'Default';
 
 export function activeBankDef()     { return DRUM_SOUND_BANKS[activeDrumBank]; }
-export function activeBankKeys()    { const b = activeBankDef(); return (b && b.keys)    || DRUM_KEYS; }
+export function activeBankAllKeys() { const b = activeBankDef(); return (b && b.keys) || DRUM_KEYS; }
 export function activeBankLabels()  { const b = activeBankDef(); return (b && b.labels)  || DRUM_LABELS; }
 export function activeBankSamples() { const b = activeBankDef(); return (b && b.samples) || DRUM_B64; }
+
+export let activePads = DRUM_KEYS.slice(0, 8);
+
+export function setActivePad(index, key) {
+  const old = activePads[index];
+  if (old && old !== key) delete drumBuffers[old];
+  activePads[index] = key;
+  drumsReady = false;
+  drumsLoading = false;
+}
+
+export function activeBankKeys() { return activePads; }
 
 
 export const WORLD_RHYTHMS_DRUM = {
@@ -596,8 +610,10 @@ export function loadDrumSamples(onDone) {
 
 
 export function reloadDrumBank(bankName, onDone) {
-  activeBankKeys().forEach(k => delete drumBuffers[k]);
+  activePads.forEach(k => delete drumBuffers[k]);
   activeDrumBank = bankName;
+  const allKeys = (DRUM_SOUND_BANKS[bankName] && DRUM_SOUND_BANKS[bankName].keys) || DRUM_KEYS;
+  activePads = allKeys.slice(0, 8);
   drumsReady = false;
   drumsLoading = false;
   const doLoad = () => loadDrumSamples(onDone);
@@ -743,7 +759,8 @@ export function loadWorldRhythm(name) {
   const pat = WORLD_RHYTHMS_DRUM[name];
   if (!pat) return;
   const steps = seqSteps();
-  activeBankKeys().forEach(key => {
+  const keysToClear = [...new Set([...DRUM_KEYS, ...activePads])];
+  keysToClear.forEach(key => {
     for (let st = 0; st < steps; st++) delete DRUM_GRID[key + '_' + st];
   });
   if (name === 'Clear') {
@@ -754,7 +771,7 @@ export function loadWorldRhythm(name) {
     if (lv) lv.textContent = steps;
     drawDrumMachine(); return;
   }
-  activeBankKeys().forEach(key => {
+  Object.keys(pat).forEach(key => {
     const hits = pat[key];
     if (!hits) return;
     hits.forEach(h => {

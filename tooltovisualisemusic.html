@@ -11,6 +11,17 @@
 <header>
   <div class="hdr-top">
     <h1>Kandiskey</h1>
+    <!-- Transport -->
+    <div class="hdr-transport">
+      <button class="hdr-play-btn" id="btn-seq-play" title="Play (Space)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg><span class="btn-text"> Play</span></button>
+      <button class="hdr-pause-btn" id="btn-seq-pause" title="Pause (Space)" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg><span class="btn-text"> Pause</span></button>
+      <button class="hdr-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg><span class="btn-text"> Stop</span></button>
+      <div class="hdr-bpm">
+        <input type="range" class="seq-sl" id="seq-bpm" min="40" max="240" step="1" value="120" style="width:64px">
+        <span class="seq-val" id="seq-bpm-val">120</span>
+        <button class="tap-btn" id="btn-tap-tempo" title="Tap to set tempo">TAP</button>
+      </div>
+    </div>
     <div class="hdr-actions">
       <button class="hdr-btn active-audio" id="btn-audio" title="Toggle audio">
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg><span class="btn-text"> Audio</span>
@@ -18,17 +29,19 @@
       <button class="hdr-btn" id="btn-guitar" title="Show guitar fretboard">
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-fretboard"></use></svg><span class="btn-text"> Fretboard</span>
       </button>
-      <button class="hdr-btn" id="btn-synth" title="Synth controls">
-        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-synth"></use></svg><span class="btn-text"> Synth</span>
-      </button>
       <button class="hdr-btn" id="btn-seq" title="Step sequencer">
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-sequencer"></use></svg><span class="btn-text"> Sequencer</span>
       </button>
       <button class="hdr-btn" id="btn-drums" title="Drum machine">
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-drums"></use></svg><span class="btn-text"> Drums</span>
       </button>
+      <button class="hdr-btn" id="btn-solo" title="Solo pads">🎹<span class="btn-text"> Solo</span>
+      </button>
       <button class="hdr-btn" id="btn-mixer" title="Mixer &amp; FX">
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg><span class="btn-text"> Mixer</span>
+      </button>
+      <button class="hdr-btn" id="btn-tuner" title="Chromatic tuner">
+        <span class="hdr-icon">🎙</span><span class="btn-text"> Tuner</span>
       </button>
     </div>
   </div>
@@ -50,6 +63,7 @@
   <button class="slide-dot active" data-slide="0" title="Circle"></button>
   <button class="slide-dot" data-slide="1" title="Sequencer"></button>
   <button class="slide-dot" data-slide="2" title="Drums"></button>
+  <button class="slide-dot" data-slide="3" title="Solo"></button>
 </div>
 
 <!-- ═══ OUTER WRAP: scale sidebar + main area ═══ -->
@@ -58,12 +72,6 @@
 <!-- Scale sidebar (left on desktop/medium, first slide on phone) -->
 <div class="panel" id="slide-scale">
   <div class="section-title">Scale Settings</div>
-
-  <!-- Transport at top -->
-  <div class="transport-box" style="margin-top:0;margin-bottom:10px">
-    <button class="big-play-btn" id="btn-seq-play" title="Play"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg> Play</button>
-    <button class="big-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg> Stop</button>
-  </div>
 
   <div class="control-group">
     <span class="control-label">Root Note</span>
@@ -148,10 +156,6 @@
 <div id="seq-wrap">
   <div class="seq-panel">
     <div class="seq-header">
-      <span class="seq-lbl">BPM</span>
-      <input type="range" class="seq-sl" id="seq-bpm" min="40" max="240" step="1" value="120" style="width:70px">
-      <span class="seq-val" id="seq-bpm-val">120</span>
-      <div class="seq-sep"></div>
       <span class="seq-lbl">Rhythm</span>
       <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
       <div class="seq-sep"></div>
@@ -170,13 +174,21 @@
       <button class="midi-btn seq-src-btn active" id="seq-src-synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth</button>
       <button class="midi-btn seq-src-btn" id="seq-src-wave"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-vibrato-rate"></use></svg> Wave</button>
       <button class="midi-btn seq-src-btn" id="seq-src-sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-attack"></use></svg> Sample</button>
+      <div class="seq-sep"></div>
+      <button class="midi-btn" id="btn-seq-synth" title="Synth controls"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth ▾</button>
     </div>
     <!-- Wave draw bar -->
     <div id="seq-wave-bar" class="seq-extra-bar" style="display:none">
       <canvas id="wave-draw-cvs" class="wave-draw-cvs"></canvas>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
         <button class="midi-btn" id="wave-draw-reset">↺ Reset</button>
+        <button class="midi-btn" id="wave-draw-random">🎲 Random</button>
         <span style="font-size:0.6rem;color:rgba(255,255,255,0.28);text-align:center">draw &amp; drag</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0;align-items:center;min-width:60px">
+        <span style="font-size:0.6rem;color:rgba(255,255,255,0.45)">Roughness</span>
+        <input type="range" id="wave-draw-roughness" min="0" max="100" step="1" value="30" style="width:60px">
+        <span class="seq-val" id="wave-draw-rough-val">30%</span>
       </div>
     </div>
     <!-- Sample bar -->
@@ -213,9 +225,91 @@
       <span class="seq-val" id="drum-vel-val">80%</span>
       <div class="seq-sep"></div>
       <button class="midi-btn" id="btn-drum-clear" title="Clear grid">✕ Clear</button>
+      <div class="seq-sep"></div>
+      <button class="midi-btn" id="btn-drum-pads" title="Configure pads">⚙ Pads</button>
     </div>
+    <div id="drum-pad-config" style="display:none;flex-wrap:wrap;gap:4px;padding:4px 8px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.06)"></div>
     <div class="seq-canvas-wrap">
       <canvas id="drum-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SOLO ═══ -->
+<div id="solo-wrap">
+  <div class="seq-panel">
+    <div class="seq-header">
+      <span class="seq-lbl">Mode</span>
+      <button class="midi-btn solo-mode-btn active" id="solo-mode-chords">Chords</button>
+      <button class="midi-btn solo-mode-btn" id="solo-mode-notes">Notes</button>
+      <div class="seq-sep"></div>
+      <span class="seq-lbl">Oct</span>
+      <button class="midi-btn" id="solo-oct-down">−</button>
+      <span class="seq-val" id="solo-oct-val">4</span>
+      <button class="midi-btn" id="solo-oct-up">+</button>
+      <div class="seq-sep"></div>
+      <button class="midi-btn" id="btn-solo-synth">🔊 Synth</button>
+    </div>
+    <div id="solo-pads"></div>
+  </div>
+</div>
+
+<!-- ═══ SOLO SYNTH CONTROLS ═══ -->
+<div id="solo-synth-wrap">
+  <div class="synth-panel">
+    <div class="syn-group" style="min-width:116px">
+      <span class="syn-label">Wave</span>
+      <div class="wave-grid">
+        <canvas class="solo-wave-cvs active" id="solo-wave-sine"     data-wave="sine"     width="52" height="22"></canvas>
+        <canvas class="solo-wave-cvs"        id="solo-wave-triangle" data-wave="triangle" width="52" height="22"></canvas>
+        <canvas class="solo-wave-cvs"        id="solo-wave-square"   data-wave="square"   width="52" height="22"></canvas>
+        <canvas class="solo-wave-cvs"        id="solo-wave-sawtooth" data-wave="sawtooth" width="52" height="22"></canvas>
+      </div>
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Attack</span>
+      <span class="syn-val" id="solo-syn-atk-val">10ms</span>
+      <input type="range" class="syn-slider" id="solo-syn-attack" min="1" max="500" step="1" value="10">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Decay</span>
+      <span class="syn-val" id="solo-syn-dec-val">0.50s</span>
+      <input type="range" class="syn-slider" id="solo-syn-decay" min="50" max="5000" step="10" value="500">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Filter</span>
+      <span class="syn-val" id="solo-syn-flt-val">3.5kHz</span>
+      <input type="range" class="syn-slider" id="solo-syn-filter" min="200" max="12000" step="50" value="3500">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Reso</span>
+      <span class="syn-val" id="solo-syn-res-val">1.2</span>
+      <input type="range" class="syn-slider" id="solo-syn-res" min="0.1" max="14" step="0.1" value="1.2">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Vib Rate</span>
+      <span class="syn-val" id="solo-syn-vbr-val">5.5Hz</span>
+      <input type="range" class="syn-slider" id="solo-syn-vib-rate" min="0.5" max="12" step="0.1" value="5.5">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Vib Depth</span>
+      <span class="syn-val" id="solo-syn-vbd-val">0¢</span>
+      <input type="range" class="syn-slider" id="solo-syn-vib-depth" min="0" max="60" step="1" value="0">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Sustain</span>
+      <span class="syn-val" id="solo-syn-sus-val">55%</span>
+      <input type="range" class="syn-slider" id="solo-syn-sustain" min="0" max="100" step="1" value="55">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Detune</span>
+      <span class="syn-val" id="solo-syn-det-val">0¢</span>
+      <input type="range" class="syn-slider" id="solo-syn-detune" min="-100" max="100" step="1" value="0">
+    </div>
+    <div class="syn-group">
+      <span class="syn-label">Harmonics</span>
+      <span class="syn-val" id="solo-syn-harm-val">6</span>
+      <input type="range" class="syn-slider" id="solo-syn-harmonics" min="1" max="8" step="1" value="6">
     </div>
   </div>
 </div>
@@ -393,6 +487,7 @@
 <!-- ── Mobile compact scale strip (canvas + seq slides; hidden on drums) ── -->
 <div id="mobile-scale-strip">
   <button class="mob-play-btn" id="mob-btn-play" title="Play"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg></button>
+  <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg></button>
   <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg></button>
   <button class="mob-root-btn" id="mob-root-prev" title="Previous root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-prev"></use></svg></button>
   <span class="mob-root-lbl" id="mob-root-lbl">C</span>

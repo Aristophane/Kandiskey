@@ -1,5 +1,6 @@
 import './style.css';
 import * as Sync from './sync.js';
+import { startTuner, stopTuner, tunerState } from './tuner.js';
 
 import { CHROMATIC, TEMPERAMENTS, SCALE_FAMILIES, CHORDS, GUITAR_TUNINGS, RHYTHMS, PRESETS, DEGREE_NAMES } from './data.js';
 import {
@@ -11,6 +12,7 @@ import { audio } from './audio.js';
 import {
   DRUM_GRID, drumVelocity, setDrumVelocity, drumBuffers,
   activeBankKeys, activeBankLabels,
+  activePads, setActivePad,
   loadDrumSamples, reloadDrumBank, drawDrumMachine, loadWorldRhythm,
   setSyncSend as drumSetSyncSend, setSeqEngineRef as drumSetSeqEngineRef,
   WORLD_RHYTHMS_DRUM,
@@ -21,6 +23,8 @@ import {
   setSyncGetFullState, setSyncPlayUI, setStopMidiPlayer,
   setDrawFretboardCallback as seqSetDrawFretboard,
 } from './sequencer.js';
+import { SOLO_SYNTH, soloOctave, setSoloMode, setSoloOctave, renderSoloPads } from './solo.js';
+
 import {
   draw, addRipple, canvas, ctx, vizPanel, playChordNow,
   setSeqEngineRef as vizSetSeqEngineRef,
@@ -66,19 +70,22 @@ function applyPeerBpm(bpm) {
   SEQ.bpm = Math.max(20, Math.round(bpm * syncTempoRatio));
   const sl = document.getElementById('seq-bpm');
   const vl = document.getElementById('seq-bpm-val');
-  if (sl) sl.value        = SEQ.bpm;
-  if (vl) vl.textContent  = SEQ.bpm;
+  if (sl) sl.value = SEQ.bpm;
+  if (vl) vl.textContent = SEQ.bpm;
   if (seqEngine.playing) seqEngine.rebase(true);
 }
 
 // ── syncPlayUI (full version, overrides sequencer's stub) ───────────
 
-function syncPlayUI(playing) {
+function syncPlayUI(state) {
   ['btn-seq-play', 'mob-btn-play'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.style.display = playing ? 'none' : '';
+    const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? 'none' : '';
+  });
+  ['btn-seq-pause', 'mob-btn-pause'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? '' : 'none';
   });
   ['btn-seq-stop', 'mob-btn-stop'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.style.display = playing ? '' : 'none';
+    const el = document.getElementById(id); if (el) el.style.display = state !== 'stopped' ? '' : 'none';
   });
 }
 
@@ -258,9 +265,9 @@ function _getScaleFreqs() {
 }
 
 function updateInfo() {
-  const scale      = getScale();
+  const scale = getScale();
   const scaleNotes = getScaleNotes();
-  const tempData   = TEMPERAMENTS[S.temp];
+  const tempData = TEMPERAMENTS[S.temp];
 
   const chips = document.getElementById('scale-chips');
   chips.innerHTML = '';
@@ -269,7 +276,7 @@ function updateInfo() {
     c.className = 'chip';
     c.textContent = CHROMATIC[n];
     if (i === 0) { c.style.cssText = 'background:rgba(245,158,11,0.15);color:#f59e0b;border-color:rgba(245,158,11,0.3)'; }
-    else         { c.style.cssText = 'background:rgba(167,139,250,0.1);color:#a78bfa;border-color:rgba(167,139,250,0.22)'; }
+    else { c.style.cssText = 'background:rgba(167,139,250,0.1);color:#a78bfa;border-color:rgba(167,139,250,0.22)'; }
     chips.appendChild(c);
   });
 
@@ -277,30 +284,31 @@ function updateInfo() {
   tbody.innerHTML = '';
   scale.forEach((deg, i) => {
     const note = (deg + S.root) % 12;
-    const row  = document.createElement('tr');
+    const row = document.createElement('tr');
     row.innerHTML = `
-      <td style="color:${i===0?'#f59e0b':'#a78bfa'};font-weight:${i===0?'600':'400'}">${CHROMATIC[note]}</td>
+      <td style="color:${i === 0 ? '#f59e0b' : '#a78bfa'};font-weight:${i === 0 ? '600' : '400'}">${CHROMATIC[note]}</td>
       <td style="color:rgba(255,255,255,0.38)">${DEGREE_NAMES[deg]}</td>
       <td style="color:#60a5fa">${tempData.cents[deg].toFixed(1)}</td>
       <td style="color:#34d399;font-size:0.63rem;font-family:monospace">${tempData.ratios[deg]}</td>
     `;
     tbody.appendChild(row);
   });
+  renderSoloPads();
 }
 
 // ── RESIZE ──────────────────────────────────────────────────────────
 
 function resize() {
-  const w      = vizPanel.clientWidth  || window.innerWidth;
+  const w = vizPanel.clientWidth || window.innerWidth;
   const stripH = isMobileSlides() ? 52 : 0;
-  const h      = vizPanel.clientHeight || (window.innerHeight - 80 - stripH);
-  const size   = Math.max(60, Math.min(w - 40, h - 40, 640));
-  canvas.width  = size;
+  const h = vizPanel.clientHeight || (window.innerHeight - 80 - stripH);
+  const size = Math.max(60, Math.min(w - 40, h - 40, 640));
+  canvas.width = size;
   canvas.height = size;
   draw();
   if (S.fretboardOpen) drawFretboard();
   if (isMobileSlides()) { drawSequencer(); drawDrumMachine(); return; }
-  if (document.getElementById('seq-wrap').classList.contains('open'))  drawSequencer();
+  if (document.getElementById('seq-wrap').classList.contains('open')) drawSequencer();
   if (document.getElementById('drum-wrap').classList.contains('open')) drawDrumMachine();
 }
 
@@ -309,7 +317,7 @@ ro.observe(vizPanel);
 
 // ── HEADER BUTTONS ───────────────────────────────────────────────────
 
-document.getElementById('btn-audio').addEventListener('click', function() {
+document.getElementById('btn-audio').addEventListener('click', function () {
   audio.enabled = !audio.enabled;
   this.classList.toggle('active-audio', audio.enabled);
   this.innerHTML = audio.enabled
@@ -317,7 +325,7 @@ document.getElementById('btn-audio').addEventListener('click', function() {
     : '<span class="hdr-icon">🔇</span><span class="btn-text"> Muted</span>';
 });
 
-document.getElementById('btn-guitar').addEventListener('click', function() {
+document.getElementById('btn-guitar').addEventListener('click', function () {
   S.fretboardOpen = !S.fretboardOpen;
   const wrap = document.getElementById('fretboard-wrap');
   wrap.classList.toggle('open', S.fretboardOpen);
@@ -325,18 +333,19 @@ document.getElementById('btn-guitar').addEventListener('click', function() {
   if (S.fretboardOpen) setTimeout(drawFretboard, 320);
 });
 
-document.getElementById('btn-synth').addEventListener('click', function() {
+document.getElementById('btn-seq-synth').addEventListener('click', function () {
   const wrap = document.getElementById('synth-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-synth', open);
+  this.innerHTML = `<svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth ${open ? '▴' : '▾'}`;
 });
 
-document.getElementById('sel-scale').addEventListener('change', function() {
+document.getElementById('sel-scale').addEventListener('change', function () {
   S.scaleName = this.value;
   updateInfo(); draw(); drawFretboard();
 });
 
-['tog-cents','tog-labels'].forEach(id => {
+['tog-cents', 'tog-labels'].forEach(id => {
   const btn = document.getElementById(id);
   const key = id === 'tog-cents' ? 'showCents' : 'showLabels';
   btn.addEventListener('click', () => {
@@ -348,85 +357,85 @@ document.getElementById('sel-scale').addEventListener('change', function() {
 
 // ── SYNTH PANEL ───────────────────────────────────────────────────────
 
-function fmtHz(v) { return v >= 1000 ? (v/1000).toFixed(1)+'kHz' : v+'Hz'; }
-function fmtMs(v) { return v >= 1000 ? (v/1000).toFixed(2)+'s'  : v+'ms'; }
+function fmtHz(v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'kHz' : v + 'Hz'; }
+function fmtMs(v) { return v >= 1000 ? (v / 1000).toFixed(2) + 's' : v + 'ms'; }
 
 function applySynthPreset(name) {
   const p = PRESETS[name];
   Object.assign(SYNTH, p);
-  document.getElementById('syn-attack').value    = Math.round(p.attack * 1000);
-  document.getElementById('syn-decay').value     = Math.round(p.decay  * 1000);
-  document.getElementById('syn-filter').value    = p.filterFreq;
-  document.getElementById('syn-res').value       = p.filterQ;
-  document.getElementById('syn-vib-rate').value  = p.vibratoRate;
+  document.getElementById('syn-attack').value = Math.round(p.attack * 1000);
+  document.getElementById('syn-decay').value = Math.round(p.decay * 1000);
+  document.getElementById('syn-filter').value = p.filterFreq;
+  document.getElementById('syn-res').value = p.filterQ;
+  document.getElementById('syn-vib-rate').value = p.vibratoRate;
   document.getElementById('syn-vib-depth').value = p.vibratoDepth;
-  document.getElementById('syn-sustain').value   = Math.round(p.sustain * 100);
-  document.getElementById('syn-detune').value    = p.detune ?? 0;
+  document.getElementById('syn-sustain').value = Math.round(p.sustain * 100);
+  document.getElementById('syn-detune').value = p.detune ?? 0;
   document.getElementById('syn-harmonics').value = p.numHarmonics ?? 6;
-  document.getElementById('syn-atk-val').textContent  = fmtMs(Math.round(p.attack * 1000));
-  document.getElementById('syn-dec-val').textContent  = fmtMs(Math.round(p.decay  * 1000));
-  document.getElementById('syn-flt-val').textContent  = fmtHz(p.filterFreq);
-  document.getElementById('syn-res-val').textContent  = p.filterQ.toFixed(1);
-  document.getElementById('syn-vbr-val').textContent  = p.vibratoRate.toFixed(1)+'Hz';
-  document.getElementById('syn-vbd-val').textContent  = p.vibratoDepth+'¢';
-  document.getElementById('syn-sus-val').textContent  = Math.round(p.sustain * 100)+'%';
-  document.getElementById('syn-det-val').textContent  = (p.detune ?? 0)+'¢';
+  document.getElementById('syn-atk-val').textContent = fmtMs(Math.round(p.attack * 1000));
+  document.getElementById('syn-dec-val').textContent = fmtMs(Math.round(p.decay * 1000));
+  document.getElementById('syn-flt-val').textContent = fmtHz(p.filterFreq);
+  document.getElementById('syn-res-val').textContent = p.filterQ.toFixed(1);
+  document.getElementById('syn-vbr-val').textContent = p.vibratoRate.toFixed(1) + 'Hz';
+  document.getElementById('syn-vbd-val').textContent = p.vibratoDepth + '¢';
+  document.getElementById('syn-sus-val').textContent = Math.round(p.sustain * 100) + '%';
+  document.getElementById('syn-det-val').textContent = (p.detune ?? 0) + '¢';
   document.getElementById('syn-harm-val').textContent = p.numHarmonics ?? 6;
   if (p.waveform && p.waveform !== 'custom') {
     document.querySelectorAll('.wave-cvs').forEach(c =>
       c.classList.toggle('active', c.dataset.wave === p.waveform));
   }
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('preset-'+name).classList.add('active');
+  document.getElementById('preset-' + name).classList.add('active');
   audio.applyFilter();
 }
 
 document.getElementById('preset-piano').addEventListener('click', () => applySynthPreset('piano'));
 document.getElementById('preset-cello').addEventListener('click', () => applySynthPreset('cello'));
 
-document.getElementById('syn-attack').addEventListener('input', function() {
+document.getElementById('syn-attack').addEventListener('input', function () {
   SYNTH.attack = parseInt(this.value) / 1000;
   document.getElementById('syn-atk-val').textContent = fmtMs(parseInt(this.value));
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-decay').addEventListener('input', function() {
+document.getElementById('syn-decay').addEventListener('input', function () {
   SYNTH.decay = parseInt(this.value) / 1000;
   document.getElementById('syn-dec-val').textContent = fmtMs(parseInt(this.value));
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-filter').addEventListener('input', function() {
+document.getElementById('syn-filter').addEventListener('input', function () {
   SYNTH.filterFreq = parseInt(this.value);
   document.getElementById('syn-flt-val').textContent = fmtHz(SYNTH.filterFreq);
   audio.applyFilter();
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-res').addEventListener('input', function() {
+document.getElementById('syn-res').addEventListener('input', function () {
   SYNTH.filterQ = parseFloat(this.value);
   document.getElementById('syn-res-val').textContent = SYNTH.filterQ.toFixed(1);
   audio.applyFilter();
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-vib-rate').addEventListener('input', function() {
+document.getElementById('syn-vib-rate').addEventListener('input', function () {
   SYNTH.vibratoRate = parseFloat(this.value);
-  document.getElementById('syn-vbr-val').textContent = SYNTH.vibratoRate.toFixed(1)+'Hz';
+  document.getElementById('syn-vbr-val').textContent = SYNTH.vibratoRate.toFixed(1) + 'Hz';
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-vib-depth').addEventListener('input', function() {
+document.getElementById('syn-vib-depth').addEventListener('input', function () {
   SYNTH.vibratoDepth = parseInt(this.value);
-  document.getElementById('syn-vbd-val').textContent = SYNTH.vibratoDepth+'¢';
+  document.getElementById('syn-vbd-val').textContent = SYNTH.vibratoDepth + '¢';
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-sustain').addEventListener('input', function() {
+document.getElementById('syn-sustain').addEventListener('input', function () {
   SYNTH.sustain = parseInt(this.value) / 100;
   document.getElementById('syn-sus-val').textContent = this.value + '%';
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-detune').addEventListener('input', function() {
+document.getElementById('syn-detune').addEventListener('input', function () {
   SYNTH.detune = parseInt(this.value);
   document.getElementById('syn-det-val').textContent = this.value + '¢';
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
 });
-document.getElementById('syn-harmonics').addEventListener('input', function() {
+document.getElementById('syn-harmonics').addEventListener('input', function () {
   SYNTH.numHarmonics = parseInt(this.value);
   document.getElementById('syn-harm-val').textContent = this.value;
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
@@ -439,7 +448,7 @@ document.getElementById('syn-harmonics').addEventListener('input', function() {
     SYNTH.sourceMode = mode;
     document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('seq-src-' + mode).classList.add('active');
-    document.getElementById('seq-wave-bar').style.display   = mode === 'wave'   ? 'flex' : 'none';
+    document.getElementById('seq-wave-bar').style.display = mode === 'wave' ? 'flex' : 'none';
     document.getElementById('seq-sample-bar').style.display = mode === 'sample' ? 'flex' : 'none';
     if (mode === 'wave') requestAnimationFrame(renderWaveDraw);
   }
@@ -467,7 +476,7 @@ document.getElementById('syn-harmonics').addEventListener('input', function() {
     wctx.beginPath();
     for (let x = 0; x <= w; x++) {
       const si = Math.min(WN - 1, Math.floor((x / w) * WN));
-      const y  = 26 - waveSamples[si] * 22;
+      const y = 26 - waveSamples[si] * 22;
       x === 0 ? wctx.moveTo(x, y) : wctx.lineTo(x, y);
     }
     wctx.strokeStyle = '#a78bfa'; wctx.lineWidth = 2; wctx.stroke();
@@ -490,16 +499,16 @@ document.getElementById('syn-harmonics').addEventListener('input', function() {
         real[k] = (2 * re) / WN; imag[k] = (2 * im) / WN;
       }
       SYNTH.customWave = audio.actx.createPeriodicWave(real, imag);
-      SYNTH.waveform   = 'custom';
+      SYNTH.waveform = 'custom';
       document.querySelectorAll('.wave-cvs').forEach(c => c.classList.remove('active'));
     }, 250);
   }
 
   function drawAt(cvs, clientX, clientY) {
     const rect = cvs.getBoundingClientRect();
-    const xr   = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const yr   = Math.max(-1, Math.min(1, (rect.top + 26 - clientY) / 22));
-    const si   = Math.floor(xr * WN);
+    const xr = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const yr = Math.max(-1, Math.min(1, (rect.top + 26 - clientY) / 22));
+    const si = Math.floor(xr * WN);
     if (drawAt._lastSi !== undefined) {
       const d = si - drawAt._lastSi;
       if (Math.abs(d) > 1) {
@@ -516,34 +525,63 @@ document.getElementById('syn-harmonics').addEventListener('input', function() {
 
   let wdDrawing = false;
   const wdCvs = document.getElementById('wave-draw-cvs');
-  wdCvs.addEventListener('mousedown',  e => { wdDrawing = true; drawAt._lastSi = undefined; drawAt(wdCvs, e.clientX, e.clientY); e.preventDefault(); });
-  wdCvs.addEventListener('mousemove',  e => { if (wdDrawing) drawAt(wdCvs, e.clientX, e.clientY); });
-  window.addEventListener('mouseup',   () => { wdDrawing = false; drawAt._lastSi = undefined; });
+  wdCvs.addEventListener('mousedown', e => { wdDrawing = true; drawAt._lastSi = undefined; drawAt(wdCvs, e.clientX, e.clientY); e.preventDefault(); });
+  wdCvs.addEventListener('mousemove', e => { if (wdDrawing) drawAt(wdCvs, e.clientX, e.clientY); });
+  window.addEventListener('mouseup', () => { wdDrawing = false; drawAt._lastSi = undefined; });
   wdCvs.addEventListener('touchstart', e => { wdDrawing = true; drawAt._lastSi = undefined; drawAt(wdCvs, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
-  wdCvs.addEventListener('touchmove',  e => { if (wdDrawing) drawAt(wdCvs, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
-  window.addEventListener('touchend',  () => { wdDrawing = false; drawAt._lastSi = undefined; });
+  wdCvs.addEventListener('touchmove', e => { if (wdDrawing) drawAt(wdCvs, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+  window.addEventListener('touchend', () => { wdDrawing = false; drawAt._lastSi = undefined; });
 
   document.getElementById('wave-draw-reset').addEventListener('click', () => {
     waveSamples.fill(0); SYNTH.customWave = null; SYNTH.waveform = 'sine'; renderWaveDraw();
   });
 
-  const NOTE_NAMES    = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  document.getElementById('wave-draw-roughness').addEventListener('input', function () {
+    document.getElementById('wave-draw-rough-val').textContent = this.value + '%';
+  });
+
+  document.getElementById('wave-draw-random').addEventListener('click', () => {
+    const roughness = parseFloat(document.getElementById('wave-draw-roughness').value) / 100;
+    const numH = Math.round(3 + roughness * 29);
+    const falloff = 2.0 - roughness * 1.7;
+    const amps = [], phases = [];
+    for (let k = 0; k < numH; k++) {
+      amps.push((1 / Math.pow(k + 1, falloff)) * (0.5 + 0.5 * Math.random()));
+      phases.push(Math.random() * Math.PI * 2);
+    }
+    let maxAbs = 0;
+    for (let i = 0; i < WN; i++) {
+      let v = 0;
+      for (let k = 0; k < numH; k++) v += amps[k] * Math.sin((k + 1) * 2 * Math.PI * i / WN + phases[k]);
+      waveSamples[i] = v;
+      maxAbs = Math.max(maxAbs, Math.abs(v));
+    }
+    if (maxAbs > 0) for (let i = 0; i < WN; i++) waveSamples[i] /= maxAbs;
+    SYNTH.sourceMode = 'wave';
+    document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('seq-src-wave').classList.add('active');
+    document.getElementById('seq-wave-bar').style.display = 'flex';
+    document.getElementById('seq-sample-bar').style.display = 'none';
+    renderWaveDraw(); scheduleApply();
+  });
+
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const sampleRootSel = document.getElementById('sample-root-note');
   for (let oct = 0; oct <= 8; oct++) {
     NOTE_NAMES.forEach((n, i) => {
       const midi = (oct + 1) * 12 + i;
-      const hz   = 440 * Math.pow(2, (midi - 69) / 12);
-      const opt  = document.createElement('option');
-      opt.value  = hz.toFixed(3); opt.textContent = n + oct;
+      const hz = 440 * Math.pow(2, (midi - 69) / 12);
+      const opt = document.createElement('option');
+      opt.value = hz.toFixed(3); opt.textContent = n + oct;
       if (n === 'A' && oct === 4) opt.selected = true;
       sampleRootSel.appendChild(opt);
     });
   }
-  sampleRootSel.addEventListener('change', function() { SYNTH.sampleBaseFreq = parseFloat(this.value); });
+  sampleRootSel.addEventListener('change', function () { SYNTH.sampleBaseFreq = parseFloat(this.value); });
 
   document.getElementById('sample-load-btn').addEventListener('click', () =>
     document.getElementById('sample-file-in').click());
-  document.getElementById('sample-file-in').addEventListener('change', function() {
+  document.getElementById('sample-file-in').addEventListener('change', function () {
     const file = this.files[0]; if (!file) return;
     document.getElementById('sample-name-lbl').textContent = file.name;
     const reader = new FileReader();
@@ -558,7 +596,7 @@ document.getElementById('syn-harmonics').addEventListener('input', function() {
 
 // ── SEQUENCER WIRING ─────────────────────────────────────────────────
 
-document.getElementById('btn-seq').addEventListener('click', function() {
+document.getElementById('btn-seq').addEventListener('click', function () {
   if (isMobileSlides()) { scrollToSlide(1); return; }
   const wrap = document.getElementById('seq-wrap');
   const open = wrap.classList.toggle('open');
@@ -566,7 +604,7 @@ document.getElementById('btn-seq').addEventListener('click', function() {
   if (open) drawSequencer();
 });
 
-(function() {
+(function () {
   const sel = document.getElementById('seq-rhythm');
   Object.keys(RHYTHMS).forEach(k => {
     const opt = document.createElement('option');
@@ -574,7 +612,7 @@ document.getElementById('btn-seq').addEventListener('click', function() {
     if (k === SEQ.rhythmKey) opt.selected = true;
     sel.appendChild(opt);
   });
-  sel.addEventListener('change', function() {
+  sel.addEventListener('change', function () {
     SEQ.rhythmKey = this.value;
     const newSteps = seqSteps();
     SEQ.loopLen = newSteps;
@@ -587,7 +625,7 @@ document.getElementById('btn-seq').addEventListener('click', function() {
   });
 })();
 
-document.getElementById('seq-loop-len').addEventListener('input', function() {
+document.getElementById('seq-loop-len').addEventListener('input', function () {
   SEQ.loopLen = parseInt(this.value);
   document.getElementById('seq-loop-val').textContent = SEQ.loopLen;
   if (seqEngine.playing) seqEngine.rebase();
@@ -595,17 +633,17 @@ document.getElementById('seq-loop-len').addEventListener('input', function() {
   drawSequencer();
 });
 
-document.getElementById('drum-loop-len').addEventListener('input', function() {
+document.getElementById('drum-loop-len').addEventListener('input', function () {
   setDrumLoopLen(parseInt(this.value));
   document.getElementById('drum-loop-val').textContent = drumLoopLen;
   Sync.send({ type: 'SEQ_PARAM', drumLoopLen });
   drawDrumMachine();
 });
 
-document.getElementById('seq-bpm').addEventListener('input', function() {
+document.getElementById('seq-bpm').addEventListener('input', function () {
   document.getElementById('seq-bpm-val').textContent = this.value;
 });
-document.getElementById('seq-bpm').addEventListener('change', function() {
+document.getElementById('seq-bpm').addEventListener('change', function () {
   SEQ.bpm = parseInt(this.value);
   setMasterBpm(Math.round(SEQ.bpm / syncTempoRatio));
   document.getElementById('seq-bpm-val').textContent = SEQ.bpm;
@@ -613,7 +651,7 @@ document.getElementById('seq-bpm').addEventListener('change', function() {
   else Sync.send({ type: 'SEQ_PARAM', masterBpm });
 });
 
-document.getElementById('seq-gate').addEventListener('input', function() {
+document.getElementById('seq-gate').addEventListener('input', function () {
   SEQ.gate = parseInt(this.value) / 100;
   document.getElementById('seq-gate-val').textContent = parseInt(this.value) + '%';
   Sync.send({ type: 'SEQ_PARAM', gate: SEQ.gate });
@@ -621,15 +659,54 @@ document.getElementById('seq-gate').addEventListener('input', function() {
 
 document.getElementById('btn-seq-demo').addEventListener('click', () => seqLoadDemo());
 document.getElementById('btn-seq-clear').addEventListener('click', () => { SEQ.grid = {}; drawSequencer(); });
-document.getElementById('btn-seq-play').addEventListener('click', () => seqEngine.play());
+document.getElementById('btn-seq-play').addEventListener('click', () => {
+  if (tunerState.active) {
+    stopTuner();
+    document.getElementById('btn-tuner').classList.remove('active-tuner');
+    _tunerPausedSeq = false;
+  }
+  seqEngine.play();
+});
+document.getElementById('btn-seq-pause').addEventListener('click', () => seqEngine.pause());
 document.getElementById('btn-seq-stop').addEventListener('click', () => seqEngine.stop());
+document.getElementById('mob-btn-pause').addEventListener('click', () => seqEngine.pause());
+
+// Tap tempo
+(function () {
+  let _taps = [], _tapTimer = null;
+  document.getElementById('btn-tap-tempo').addEventListener('click', () => {
+    const now = performance.now();
+    clearTimeout(_tapTimer);
+    _tapTimer = setTimeout(() => { _taps = []; }, 2000);
+    _taps.push(now);
+    if (_taps.length > 8) _taps.shift();
+    if (_taps.length < 2) return;
+    const intervals = [];
+    for (let i = 1; i < _taps.length; i++) intervals.push(_taps[i] - _taps[i - 1]);
+    const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const bpm = Math.max(40, Math.min(240, Math.round(60000 / avg)));
+    SEQ.bpm = bpm;
+    setMasterBpm(Math.round(bpm / syncTempoRatio));
+    const sl = document.getElementById('seq-bpm');
+    const vl = document.getElementById('seq-bpm-val');
+    if (sl) sl.value = bpm;
+    if (vl) vl.textContent = bpm;
+    if (seqEngine.playing) seqEngine.rebase();
+    else Sync.send({ type: 'SEQ_PARAM', masterBpm });
+  });
+})();
 
 document.addEventListener('keydown', e => {
   if (e.code !== 'Space' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   e.preventDefault();
-  if (seqEngine.playing) seqEngine.stop();
-  stopActiveMidiPlayer();
-  audio.stopAll();
+  if (seqEngine.playing) {
+    seqEngine.pause();
+  } else if (seqEngine.paused) {
+    seqEngine.play();
+  } else {
+    stopActiveMidiPlayer();
+    audio.stopAll();
+  }
 });
 
 // ── WAVEFORM SELECTOR ─────────────────────────────────────────────────
@@ -654,9 +731,9 @@ function drawWaveCanvas(cvs, type, t) {
     const angle = (px / W) * cycles * Math.PI * 2 + phase;
     let y;
     switch (type) {
-      case 'sine':     y = Math.sin(angle); break;
+      case 'sine': y = Math.sin(angle); break;
       case 'triangle': y = (2 / Math.PI) * Math.asin(Math.sin(angle)); break;
-      case 'square':   y = Math.sin(angle) >= 0 ? 0.85 : -0.85; break;
+      case 'square': y = Math.sin(angle) >= 0 ? 0.85 : -0.85; break;
       case 'sawtooth': { const a = angle % (Math.PI * 2); y = (a / Math.PI) - 1; break; }
     }
     const py = H / 2 - y * (H * 0.34);
@@ -670,6 +747,8 @@ function drawWaveCanvas(cvs, type, t) {
   WAVE_TYPES.forEach(type => {
     const cvs = document.getElementById('wave-' + type);
     if (cvs) drawWaveCanvas(cvs, type, _waveT);
+    const scvs = document.getElementById('solo-wave-' + type);
+    if (scvs) drawWaveCanvas(scvs, type, _waveT);
   });
   requestAnimationFrame(waveAnimLoop);
 })();
@@ -680,7 +759,7 @@ document.querySelectorAll('.wave-cvs').forEach(cvs => {
     document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
     const synthBtn = document.getElementById('seq-src-synth');
     if (synthBtn) synthBtn.classList.add('active');
-    document.getElementById('seq-wave-bar').style.display   = 'none';
+    document.getElementById('seq-wave-bar').style.display = 'none';
     document.getElementById('seq-sample-bar').style.display = 'none';
     document.querySelectorAll('.wave-cvs').forEach(c => c.classList.remove('active'));
     cvs.classList.add('active');
@@ -688,23 +767,31 @@ document.querySelectorAll('.wave-cvs').forEach(cvs => {
   });
 });
 
+document.querySelectorAll('.solo-wave-cvs').forEach(cvs => {
+  cvs.addEventListener('click', () => {
+    SOLO_SYNTH.waveform = cvs.dataset.wave;
+    document.querySelectorAll('.solo-wave-cvs').forEach(c => c.classList.remove('active'));
+    cvs.classList.add('active');
+  });
+});
+
 // ── MIDI FILE SELECT ──────────────────────────────────────────────────
 
-(function() {
+(function () {
   const sel = document.getElementById('midi-file-sel');
   MIDI_FILES.forEach((f, i) => {
     const opt = document.createElement('option');
     opt.value = i; opt.textContent = f.title;
     sel.appendChild(opt);
   });
-  sel.addEventListener('change', function() { loadMidiFile(parseInt(this.value)); });
+  sel.addEventListener('change', function () { loadMidiFile(parseInt(this.value)); });
 })();
 
 wireMidiControls();
 
 // ── DRUM MACHINE WIRING ───────────────────────────────────────────────
 
-document.getElementById('btn-drums').addEventListener('click', function() {
+document.getElementById('btn-drums').addEventListener('click', function () {
   if (isMobileSlides()) { scrollToSlide(2); loadDrumSamples(() => drawDrumMachine()); return; }
   const wrap = document.getElementById('drum-wrap');
   const open = wrap.classList.toggle('open');
@@ -712,7 +799,71 @@ document.getElementById('btn-drums').addEventListener('click', function() {
   if (open) { loadDrumSamples(() => drawDrumMachine()); drawDrumMachine(); }
 });
 
-(function() {
+// ── SOLO PANEL ────────────────────────────────────────────────────────
+
+document.getElementById('btn-solo').addEventListener('click', function () {
+  if (isMobileSlides()) { scrollToSlide(3); return; }
+  const wrap = document.getElementById('solo-wrap');
+  const open = wrap.classList.toggle('open');
+  this.classList.toggle('active-solo', open);
+  if (open) renderSoloPads();
+});
+
+document.getElementById('btn-solo-synth').addEventListener('click', () => {
+  document.getElementById('solo-synth-wrap').classList.toggle('open');
+});
+
+document.getElementById('solo-mode-chords').addEventListener('click', function () {
+  setSoloMode('chords');
+  this.classList.add('active');
+  document.getElementById('solo-mode-notes').classList.remove('active');
+});
+document.getElementById('solo-mode-notes').addEventListener('click', function () {
+  setSoloMode('notes');
+  this.classList.add('active');
+  document.getElementById('solo-mode-chords').classList.remove('active');
+});
+
+document.getElementById('solo-oct-down').addEventListener('click', () => setSoloOctave(soloOctave - 1));
+document.getElementById('solo-oct-up').addEventListener('click', () => setSoloOctave(soloOctave + 1));
+
+{
+  const fmtMs = v => v < 1000 ? Math.round(v) + 'ms' : (v / 1000).toFixed(2) + 's';
+  const fmtHz = v => v >= 1000 ? (v / 1000).toFixed(1) + 'kHz' : Math.round(v) + 'Hz';
+  const sl = (id, label, fmt, prop, scale) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function () {
+      const raw = parseFloat(this.value);
+      const val = scale ? raw / scale : raw;
+      SOLO_SYNTH[prop] = val;
+      const lbl = document.getElementById(label);
+      if (lbl) lbl.textContent = fmt(raw);
+    });
+  };
+  sl('solo-syn-attack', 'solo-syn-atk-val', v => fmtMs(v), 'attack', 1000);
+  sl('solo-syn-decay', 'solo-syn-dec-val', v => fmtMs(v), 'decay', 1000);
+  sl('solo-syn-filter', 'solo-syn-flt-val', v => fmtHz(v), 'filterFreq', 0);
+  sl('solo-syn-res', 'solo-syn-res-val', v => parseFloat(v).toFixed(1), 'filterQ', 0);
+  sl('solo-syn-vib-rate', 'solo-syn-vbr-val', v => parseFloat(v).toFixed(1) + 'Hz', 'vibratoRate', 0);
+  sl('solo-syn-vib-depth', 'solo-syn-vbd-val', v => Math.round(v) + '¢', 'vibratoDepth', 0);
+  sl('solo-syn-sustain', 'solo-syn-sus-val', v => Math.round(v) + '%', 'sustain', 100);
+  sl('solo-syn-detune', 'solo-syn-det-val', v => Math.round(v) + '¢', 'detune', 0);
+  sl('solo-syn-harmonics', 'solo-syn-harm-val', v => Math.round(v), 'numHarmonics', 0);
+
+  document.getElementById('solo-synth-wrap')?.addEventListener('transitionend', () => {
+    if (document.getElementById('solo-synth-wrap').classList.contains('open')) {
+      document.querySelectorAll('#solo-synth-wrap .syn-vis-ctrl').forEach(cvs => {
+        const rect = cvs.getBoundingClientRect();
+        if (rect.width > 0) cvs.width = Math.round(rect.width);
+        const slider = cvs.nextElementSibling;
+        if (slider) slider.dispatchEvent(new Event('input'));
+      });
+    }
+  });
+}
+
+(function () {
   const bankSel = document.getElementById('drum-bank-sel');
   Object.keys(WORLD_RHYTHMS_DRUM).length; // side-effect-free reference (DRUM_SOUND_BANKS from drum.js)
   // populate bank selector using activeBankLabels/Keys indirection
@@ -723,8 +874,12 @@ document.getElementById('btn-drums').addEventListener('click', function() {
       bankSel.appendChild(opt);
     });
   });
-  bankSel.addEventListener('change', function() {
-    reloadDrumBank(this.value, () => drawDrumMachine());
+  bankSel.addEventListener('change', function () {
+    reloadDrumBank(this.value, () => {
+      drawDrumMachine();
+      const cfg = document.getElementById('drum-pad-config');
+      if (cfg && cfg.style.display !== 'none') renderDrumPadConfig();
+    });
   });
 
   const sel = document.getElementById('drum-preset-sel');
@@ -733,13 +888,64 @@ document.getElementById('btn-drums').addEventListener('click', function() {
     opt.value = name; opt.textContent = name;
     sel.appendChild(opt);
   });
-  sel.addEventListener('change', function() { loadWorldRhythm(this.value); });
+  sel.addEventListener('change', function () { loadWorldRhythm(this.value); });
 })();
 
-document.getElementById('drum-vel').addEventListener('input', function() {
+const sel = document.getElementById('drum-preset-sel');
+
+
+
+// charger directement le premier preset
+if (sel.value) {
+  loadWorldRhythm(sel.value);
+}
+
+sel.addEventListener('change', function () {
+  loadWorldRhythm(this.value);
+});
+
+document.getElementById('drum-vel').addEventListener('input', function () {
   setDrumVelocity(parseInt(this.value) / 100);
   document.getElementById('drum-vel-val').textContent = parseInt(this.value) + '%';
 });
+
+document.getElementById('btn-drum-pads').addEventListener('click', function () {
+  const cfg = document.getElementById('drum-pad-config');
+  const open = cfg.style.display === 'none';
+  cfg.style.display = open ? 'flex' : 'none';
+  this.classList.toggle('active', open);
+  if (open) renderDrumPadConfig();
+});
+
+function renderDrumPadConfig() {
+  const cfg = document.getElementById('drum-pad-config');
+  cfg.innerHTML = '';
+  const labels = activeBankLabels();
+  const allKeys = Object.keys(labels);
+  activePads.forEach((padKey, i) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Pad ' + (i + 1);
+    lbl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.45);font-family:monospace;';
+    const sel = document.createElement('select');
+    sel.className = 'sm';
+    allKeys.forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = labels[k] || k;
+      if (k === padKey) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', function () {
+      setActivePad(i, this.value);
+      loadDrumSamples(() => drawDrumMachine());
+    });
+    wrap.appendChild(lbl);
+    wrap.appendChild(sel);
+    cfg.appendChild(wrap);
+  });
+}
 
 document.getElementById('btn-drum-clear').addEventListener('click', () => {
   activeBankKeys().forEach(key => {
@@ -751,36 +957,71 @@ document.getElementById('btn-drum-clear').addEventListener('click', () => {
 
 // ── MIXER PANEL ───────────────────────────────────────────────────────
 
-document.getElementById('btn-mixer').addEventListener('click', function() {
+document.getElementById('btn-mixer').addEventListener('click', function () {
   const wrap = document.getElementById('mixer-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-mixer', open);
   document.body.classList.toggle('mixer-open', open);
 });
 
+// ── TUNER ─────────────────────────────────────────────────────────────
+
+let _tunerPausedSeq = false;
+
+document.getElementById('btn-tuner').addEventListener('click', async function () {
+  if (tunerState.active) {
+    stopTuner();
+    this.classList.remove('active-tuner');
+    draw();
+    if (_tunerPausedSeq) { _tunerPausedSeq = false; seqEngine.play(); }
+  } else {
+    [
+      { wrap: 'seq-wrap',       btn: 'btn-seq',       cls: 'active-seq'   },
+      { wrap: 'drum-wrap',      btn: 'btn-drums',     cls: 'active-drums' },
+      { wrap: 'fretboard-wrap', btn: 'btn-guitar',    cls: 'active-fb'    },
+      { wrap: 'mixer-wrap',     btn: 'btn-mixer',     cls: 'active-mixer' },
+      { wrap: 'synth-wrap',     btn: 'btn-seq-synth', cls: 'active-synth' },
+    ].forEach(({ wrap, btn, cls }) => {
+      document.getElementById(wrap)?.classList.remove('open');
+      document.getElementById(btn)?.classList.remove(cls);
+    });
+    document.body.classList.remove('mixer-open');
+    S.fretboardOpen = false;
+
+    if (seqEngine.playing) { seqEngine.pause(); _tunerPausedSeq = true; }
+
+    try {
+      await startTuner(draw);
+      this.classList.add('active-tuner');
+    } catch (err) {
+      alert('Microphone access denied: ' + (err.message || err));
+    }
+  }
+});
+
 function withAudio(fn) { audio._resume(); setTimeout(fn, 0); }
 
-document.getElementById('mix-melody').addEventListener('input', function() {
+document.getElementById('mix-melody').addEventListener('input', function () {
   const v = parseInt(this.value) / 100;
   document.getElementById('mix-mel-val').textContent = parseInt(this.value) + '%';
   withAudio(() => { if (audio.melodyBus) audio.melodyBus.gain.value = v; });
 });
-document.getElementById('mix-master').addEventListener('input', function() {
+document.getElementById('mix-master').addEventListener('input', function () {
   const v = parseInt(this.value) / 100;
   document.getElementById('mix-master-val').textContent = parseInt(this.value) + '%';
   withAudio(() => { if (audio.master) audio.master.gain.setTargetAtTime(v, audio.actx.currentTime, 0.02); });
 });
-document.getElementById('mix-drums').addEventListener('input', function() {
+document.getElementById('mix-drums').addEventListener('input', function () {
   const v = parseInt(this.value) / 100;
   document.getElementById('mix-drm-val').textContent = parseInt(this.value) + '%';
   withAudio(() => { if (audio.drumBus) audio.drumBus.gain.value = v; });
 });
-document.getElementById('mix-reverb').addEventListener('input', function() {
+document.getElementById('mix-reverb').addEventListener('input', function () {
   const v = parseInt(this.value);
   document.getElementById('mix-rev-val').textContent = v + '%';
   withAudio(() => { if (audio.revSend) audio.revSend.gain.setTargetAtTime(v / 100 * 0.8, audio.actx.currentTime, 0.02); });
 });
-document.getElementById('mix-dist').addEventListener('input', function() {
+document.getElementById('mix-dist').addEventListener('input', function () {
   const v = parseInt(this.value);
   document.getElementById('mix-dist-val').textContent = v + '%';
   withAudio(() => {
@@ -789,35 +1030,35 @@ document.getElementById('mix-dist').addEventListener('input', function() {
     audio.distWet.gain.setTargetAtTime(v / 100 * 0.7, audio.actx.currentTime, 0.02);
   });
 });
-document.getElementById('mix-delay-wet').addEventListener('input', function() {
+document.getElementById('mix-delay-wet').addEventListener('input', function () {
   const v = parseInt(this.value);
   document.getElementById('mix-dly-val').textContent = v + '%';
   withAudio(() => { if (audio.delayWet) audio.delayWet.gain.setTargetAtTime(v / 100 * 0.8, audio.actx.currentTime, 0.02); });
 });
-document.getElementById('mix-delay-time').addEventListener('input', function() {
+document.getElementById('mix-delay-time').addEventListener('input', function () {
   const v = parseInt(this.value);
   document.getElementById('mix-dlt-val').textContent = v + 'ms';
   withAudio(() => { if (audio.delayNode) audio.delayNode.delayTime.setTargetAtTime(v / 1000, audio.actx.currentTime, 0.02); });
 });
-document.getElementById('mix-delay-fb').addEventListener('input', function() {
+document.getElementById('mix-delay-fb').addEventListener('input', function () {
   const v = parseInt(this.value);
   document.getElementById('mix-dfb-val').textContent = v + '%';
   withAudio(() => { if (audio.delayFeedback) audio.delayFeedback.gain.setTargetAtTime(v / 100, audio.actx.currentTime, 0.02); });
 });
-document.getElementById('mix-gflt-cut').addEventListener('input', function() {
+document.getElementById('mix-gflt-cut').addEventListener('input', function () {
   const v = parseFloat(this.value);
   const hz = v >= 100 ? 20000 : Math.round(20 * Math.pow(1000, v / 100));
-  const label = v >= 100 ? 'Open' : (hz >= 1000 ? (hz/1000).toFixed(1)+'kHz' : hz+'Hz');
+  const label = v >= 100 ? 'Open' : (hz >= 1000 ? (hz / 1000).toFixed(1) + 'kHz' : hz + 'Hz');
   document.getElementById('mix-gflt-val').textContent = label;
   withAudio(() => { if (audio.globalFilter) audio.globalFilter.frequency.setTargetAtTime(hz, audio.actx.currentTime, 0.015); });
 });
-document.getElementById('mix-gflt-res').addEventListener('input', function() {
+document.getElementById('mix-gflt-res').addEventListener('input', function () {
   const v = parseFloat(this.value);
   document.getElementById('mix-gflt-res-val').textContent = v.toFixed(1);
   withAudio(() => { if (audio.globalFilter) audio.globalFilter.Q.setTargetAtTime(v, audio.actx.currentTime, 0.015); });
 });
 document.querySelectorAll('[data-type]').forEach(btn => {
-  btn.addEventListener('click', function() {
+  btn.addEventListener('click', function () {
     document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
     withAudio(() => { if (audio.globalFilter) audio.globalFilter.type = this.dataset.type; });
@@ -839,14 +1080,14 @@ document.querySelectorAll('[data-type]').forEach(btn => {
     const cx = w / 2, trackW = 4, trackTop = h * 0.05, trackBot = h * 0.88;
     const trackH = trackBot - trackTop, thumbY = trackBot - t * trackH;
     const thumbW = Math.floor(w * 0.70), thumbH = 11;
-    const zeroY  = trackBot - (unityT ?? (100/150)) * trackH;
-    ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(cx - trackW/2, trackTop, trackW, trackH);
-    if (trackBot - thumbY > 1) { ctx.fillStyle = color + '3a'; ctx.fillRect(cx - trackW/2, thumbY, trackW, trackBot - thumbY); }
-    ctx.beginPath(); ctx.moveTo(cx - thumbW/2 - 3, zeroY); ctx.lineTo(cx + thumbW/2 + 3, zeroY);
+    const zeroY = trackBot - (unityT ?? (100 / 150)) * trackH;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(cx - trackW / 2, trackTop, trackW, trackH);
+    if (trackBot - thumbY > 1) { ctx.fillStyle = color + '3a'; ctx.fillRect(cx - trackW / 2, thumbY, trackW, trackBot - thumbY); }
+    ctx.beginPath(); ctx.moveTo(cx - thumbW / 2 - 3, zeroY); ctx.lineTo(cx + thumbW / 2 + 3, zeroY);
     ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = color; ctx.fillRect(cx - thumbW/2, thumbY - thumbH/2, thumbW, thumbH);
-    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(cx - thumbW/2 + 3, thumbY - thumbH/2 + 2, thumbW - 6, 2);
-    ctx.beginPath(); ctx.moveTo(cx - thumbW/2 + 4, thumbY); ctx.lineTo(cx + thumbW/2 - 4, thumbY);
+    ctx.fillStyle = color; ctx.fillRect(cx - thumbW / 2, thumbY - thumbH / 2, thumbW, thumbH);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(cx - thumbW / 2 + 3, thumbY - thumbH / 2 + 2, thumbW - 6, 2);
+    ctx.beginPath(); ctx.moveTo(cx - thumbW / 2 + 4, thumbY); ctx.lineTo(cx + thumbW / 2 - 4, thumbY);
     ctx.strokeStyle = 'rgba(255,255,255,0.38)'; ctx.lineWidth = 1; ctx.stroke();
   }
   function drawMixReverb(ctx, w, h, t) {
@@ -859,54 +1100,54 @@ document.querySelectorAll('[data-type]').forEach(btn => {
   function drawMixDrive(ctx, w, h, t) {
     const mid = h * 0.5, amp = h * 0.38, clip = Math.max(0.04, 1 - t * 0.94);
     ctx.beginPath();
-    for (let x = 0; x <= w; x++) { const s = Math.max(-clip, Math.min(clip, Math.sin((x/w)*2.5*Math.PI*2)))/clip; x === 0 ? ctx.moveTo(x, mid - s*amp) : ctx.lineTo(x, mid - s*amp); }
+    for (let x = 0; x <= w; x++) { const s = Math.max(-clip, Math.min(clip, Math.sin((x / w) * 2.5 * Math.PI * 2))) / clip; x === 0 ? ctx.moveTo(x, mid - s * amp) : ctx.lineTo(x, mid - s * amp); }
     ctx.strokeStyle = t > 0.05 ? COLR : 'rgba(248,113,113,0.28)'; ctx.lineWidth = 2; ctx.stroke();
   }
   function drawMixDelayWet(ctx, w, h, t) {
     const mid = h * 0.5, amp = h * 0.38, echoes = Math.round(t * 3);
-    for (let e = 0; e <= echoes; e++) { const x = (e/(echoes+1.5))*w*0.9, a = e===0?0.8:Math.pow(t,e*0.7)*0.72; ctx.fillStyle=`rgba(96,165,250,${(a*0.65).toFixed(2)})`; ctx.fillRect(x+2,mid-a*amp,w/(echoes+2.5)*0.5,a*amp*2); }
+    for (let e = 0; e <= echoes; e++) { const x = (e / (echoes + 1.5)) * w * 0.9, a = e === 0 ? 0.8 : Math.pow(t, e * 0.7) * 0.72; ctx.fillStyle = `rgba(96,165,250,${(a * 0.65).toFixed(2)})`; ctx.fillRect(x + 2, mid - a * amp, w / (echoes + 2.5) * 0.5, a * amp * 2); }
   }
   function drawMixDelayTime(ctx, w, h, t) {
-    const mid = h*0.5, mx = w*0.07+t*w*0.85;
-    ctx.beginPath(); ctx.moveTo(4,mid); ctx.lineTo(w-4,mid); ctx.strokeStyle='rgba(96,165,250,0.12)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.fillStyle='rgba(96,165,250,0.75)'; ctx.fillRect(4,mid-h*0.3,3,h*0.6);
-    ctx.fillStyle='rgba(96,165,250,0.38)'; ctx.fillRect(mx,mid-h*0.22,3,h*0.44);
-    ctx.beginPath(); ctx.moveTo(7,mid); ctx.lineTo(mx,mid); ctx.strokeStyle='rgba(96,165,250,0.22)'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+    const mid = h * 0.5, mx = w * 0.07 + t * w * 0.85;
+    ctx.beginPath(); ctx.moveTo(4, mid); ctx.lineTo(w - 4, mid); ctx.strokeStyle = 'rgba(96,165,250,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = 'rgba(96,165,250,0.75)'; ctx.fillRect(4, mid - h * 0.3, 3, h * 0.6);
+    ctx.fillStyle = 'rgba(96,165,250,0.38)'; ctx.fillRect(mx, mid - h * 0.22, 3, h * 0.44);
+    ctx.beginPath(); ctx.moveTo(7, mid); ctx.lineTo(mx, mid); ctx.strokeStyle = 'rgba(96,165,250,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
   }
   function drawMixDelayFB(ctx, w, h, t) {
-    const mid=h*0.5, reps=Math.max(2,Math.round(2+t*7));
-    for (let i=0;i<reps;i++) { const x=(i/reps)*w, a=Math.min(0.84,Math.pow(t+0.08,i*0.55)*0.82), bh=Math.max(2,a*h*0.72); ctx.fillStyle=`rgba(96,165,250,${a.toFixed(2)})`; ctx.fillRect(x+1,mid-bh/2,(w/reps)*0.48,bh); }
+    const mid = h * 0.5, reps = Math.max(2, Math.round(2 + t * 7));
+    for (let i = 0; i < reps; i++) { const x = (i / reps) * w, a = Math.min(0.84, Math.pow(t + 0.08, i * 0.55) * 0.82), bh = Math.max(2, a * h * 0.72); ctx.fillStyle = `rgba(96,165,250,${a.toFixed(2)})`; ctx.fillRect(x + 1, mid - bh / 2, (w / reps) * 0.48, bh); }
   }
   function drawMixFilterCut(ctx, w, h, t) {
-    const cutX=w*0.06+t*w*0.82, topY=h*0.14, botY=h*0.82;
-    ctx.beginPath(); ctx.moveTo(0,topY); ctx.lineTo(cutX,topY); ctx.bezierCurveTo(cutX+w*0.09,topY,cutX+w*0.09,botY,cutX+w*0.2,botY); ctx.lineTo(w,botY); ctx.strokeStyle=COLF; ctx.lineWidth=2; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cutX,topY-3); ctx.lineTo(cutX,botY+3); ctx.strokeStyle='rgba(251,146,60,0.25)'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+    const cutX = w * 0.06 + t * w * 0.82, topY = h * 0.14, botY = h * 0.82;
+    ctx.beginPath(); ctx.moveTo(0, topY); ctx.lineTo(cutX, topY); ctx.bezierCurveTo(cutX + w * 0.09, topY, cutX + w * 0.09, botY, cutX + w * 0.2, botY); ctx.lineTo(w, botY); ctx.strokeStyle = COLF; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cutX, topY - 3); ctx.lineTo(cutX, botY + 3); ctx.strokeStyle = 'rgba(251,146,60,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
   }
   function drawMixFilterReso(ctx, w, h, t) {
-    const baseY=h*0.76, cx=w*0.5, ph=t*h*0.6, spread=Math.max(10,w*0.28*(1-t*0.75));
-    ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(w,baseY); ctx.strokeStyle='rgba(251,146,60,0.22)'; ctx.lineWidth=1; ctx.stroke();
-    if (ph>1) { ctx.beginPath(); ctx.moveTo(0,baseY); ctx.bezierCurveTo(cx-spread,baseY,cx-spread/3,baseY-ph,cx,baseY-ph); ctx.bezierCurveTo(cx+spread/3,baseY-ph,cx+spread,baseY,w,baseY); ctx.strokeStyle=COLF; ctx.lineWidth=2; ctx.stroke(); }
+    const baseY = h * 0.76, cx = w * 0.5, ph = t * h * 0.6, spread = Math.max(10, w * 0.28 * (1 - t * 0.75));
+    ctx.beginPath(); ctx.moveTo(0, baseY); ctx.lineTo(w, baseY); ctx.strokeStyle = 'rgba(251,146,60,0.22)'; ctx.lineWidth = 1; ctx.stroke();
+    if (ph > 1) { ctx.beginPath(); ctx.moveTo(0, baseY); ctx.bezierCurveTo(cx - spread, baseY, cx - spread / 3, baseY - ph, cx, baseY - ph); ctx.bezierCurveTo(cx + spread / 3, baseY - ph, cx + spread, baseY, w, baseY); ctx.strokeStyle = COLF; ctx.lineWidth = 2; ctx.stroke(); }
   }
 
   const allMixCvs = [];
   function paintMix(cvs, slider, fn) {
     if (!cvs.width || !cvs.height) return;
-    const mctx = cvs.getContext('2d'); mctx.clearRect(0,0,cvs.width,cvs.height);
-    const v=parseFloat(slider.value), t=(v-parseFloat(slider.min))/(parseFloat(slider.max)-parseFloat(slider.min));
-    fn(mctx,cvs.width,cvs.height,t,v);
+    const mctx = cvs.getContext('2d'); mctx.clearRect(0, 0, cvs.width, cvs.height);
+    const v = parseFloat(slider.value), t = (v - parseFloat(slider.min)) / (parseFloat(slider.max) - parseFloat(slider.min));
+    fn(mctx, cvs.width, cvs.height, t, v);
   }
   function redrawMix() {
     allMixCvs.forEach(({ cvs, slider, fn }) => {
       const rect = cvs.getBoundingClientRect();
-      if (rect.width  > 0) cvs.width  = Math.round(rect.width);
+      if (rect.width > 0) cvs.width = Math.round(rect.width);
       if (rect.height > 0) cvs.height = Math.round(rect.height);
       paintMix(cvs, slider, fn);
     });
   }
 
   [
-    { cvs: document.getElementById('mix-fader-melody'), slider: document.getElementById('mix-melody'), color: COL4, unityT: 100/150 },
-    { cvs: document.getElementById('mix-fader-drums'),  slider: document.getElementById('mix-drums'),  color: COL2, unityT: 100/150 },
+    { cvs: document.getElementById('mix-fader-melody'), slider: document.getElementById('mix-melody'), color: COL4, unityT: 100 / 150 },
+    { cvs: document.getElementById('mix-fader-drums'), slider: document.getElementById('mix-drums'), color: COL2, unityT: 100 / 150 },
     { cvs: document.getElementById('mix-fader-master'), slider: document.getElementById('mix-master'), color: '#a78bfa', unityT: 1.0 },
   ].forEach(({ cvs, slider, color, unityT }) => {
     if (!cvs || !slider) return;
@@ -915,36 +1156,36 @@ document.querySelectorAll('[data-type]').forEach(btn => {
     function repaint() { paintMix(cvs, slider, fn); }
     slider.addEventListener('input', repaint);
     let startY, startVal, dragging = false;
-    cvs.addEventListener('touchstart', e => { startY=e.touches[0].clientY; startVal=parseFloat(slider.value); e.preventDefault(); }, { passive:false });
-    cvs.addEventListener('touchmove',  e => { const dy=startY-e.touches[0].clientY, range=parseFloat(slider.max)-parseFloat(slider.min), step=parseFloat(slider.step)||1; const nv=Math.max(parseFloat(slider.min),Math.min(parseFloat(slider.max),Math.round((startVal+(dy/cvs.height)*range)/step)*step)); slider.value=nv; slider.dispatchEvent(new Event('input',{bubbles:true})); repaint(); e.preventDefault(); }, { passive:false });
-    cvs.addEventListener('mousedown',  e => { dragging=true; startY=e.clientY; startVal=parseFloat(slider.value); e.preventDefault(); });
-    window.addEventListener('mousemove', e => { if (!dragging) return; const dy=startY-e.clientY, range=parseFloat(slider.max)-parseFloat(slider.min), step=parseFloat(slider.step)||1; const nv=Math.max(parseFloat(slider.min),Math.min(parseFloat(slider.max),Math.round((startVal+(dy/cvs.height)*range)/step)*step)); slider.value=nv; slider.dispatchEvent(new Event('input',{bubbles:true})); repaint(); });
-    window.addEventListener('mouseup',  () => { dragging=false; });
+    cvs.addEventListener('touchstart', e => { startY = e.touches[0].clientY; startVal = parseFloat(slider.value); e.preventDefault(); }, { passive: false });
+    cvs.addEventListener('touchmove', e => { const dy = startY - e.touches[0].clientY, range = parseFloat(slider.max) - parseFloat(slider.min), step = parseFloat(slider.step) || 1; const nv = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), Math.round((startVal + (dy / cvs.height) * range) / step) * step)); slider.value = nv; slider.dispatchEvent(new Event('input', { bubbles: true })); repaint(); e.preventDefault(); }, { passive: false });
+    cvs.addEventListener('mousedown', e => { dragging = true; startY = e.clientY; startVal = parseFloat(slider.value); e.preventDefault(); });
+    window.addEventListener('mousemove', e => { if (!dragging) return; const dy = startY - e.clientY, range = parseFloat(slider.max) - parseFloat(slider.min), step = parseFloat(slider.step) || 1; const nv = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), Math.round((startVal + (dy / cvs.height) * range) / step) * step)); slider.value = nv; slider.dispatchEvent(new Event('input', { bubbles: true })); repaint(); });
+    window.addEventListener('mouseup', () => { dragging = false; });
   });
 
   const MIX_DRAW = {
-    'mix-reverb':     (ctx,w,h,t,v) => { drawMixReverb(ctx,w,h,t);     valLabelMix(ctx,v+'%',w,h); },
-    'mix-dist':       (ctx,w,h,t,v) => { drawMixDrive(ctx,w,h,t);      valLabelMix(ctx,v+'%',w,h,COLR); },
-    'mix-delay-wet':  (ctx,w,h,t,v) => { drawMixDelayWet(ctx,w,h,t);   valLabelMix(ctx,v+'%',w,h); },
-    'mix-delay-time': (ctx,w,h,t,v) => { drawMixDelayTime(ctx,w,h,t);  valLabelMix(ctx,v+'ms',w,h); },
-    'mix-delay-fb':   (ctx,w,h,t,v) => { drawMixDelayFB(ctx,w,h,t);    valLabelMix(ctx,v+'%',w,h); },
-    'mix-gflt-cut':   (ctx,w,h,t,v) => { drawMixFilterCut(ctx,w,h,t);  valLabelMix(ctx, v>=100?'Open':Math.round(20*Math.pow(1000,v/100))+'Hz', w,h,COLF); },
-    'mix-gflt-res':   (ctx,w,h,t,v) => { drawMixFilterReso(ctx,w,h,t); valLabelMix(ctx,parseFloat(v).toFixed(1),w,h,COLF); },
+    'mix-reverb': (ctx, w, h, t, v) => { drawMixReverb(ctx, w, h, t); valLabelMix(ctx, v + '%', w, h); },
+    'mix-dist': (ctx, w, h, t, v) => { drawMixDrive(ctx, w, h, t); valLabelMix(ctx, v + '%', w, h, COLR); },
+    'mix-delay-wet': (ctx, w, h, t, v) => { drawMixDelayWet(ctx, w, h, t); valLabelMix(ctx, v + '%', w, h); },
+    'mix-delay-time': (ctx, w, h, t, v) => { drawMixDelayTime(ctx, w, h, t); valLabelMix(ctx, v + 'ms', w, h); },
+    'mix-delay-fb': (ctx, w, h, t, v) => { drawMixDelayFB(ctx, w, h, t); valLabelMix(ctx, v + '%', w, h); },
+    'mix-gflt-cut': (ctx, w, h, t, v) => { drawMixFilterCut(ctx, w, h, t); valLabelMix(ctx, v >= 100 ? 'Open' : Math.round(20 * Math.pow(1000, v / 100)) + 'Hz', w, h, COLF); },
+    'mix-gflt-res': (ctx, w, h, t, v) => { drawMixFilterReso(ctx, w, h, t); valLabelMix(ctx, parseFloat(v).toFixed(1), w, h, COLF); },
   };
   Object.keys(MIX_DRAW).forEach(id => {
     const slider = document.getElementById(id); if (!slider) return;
     const fn = MIX_DRAW[id];
-    const cvs = document.createElement('canvas'); cvs.className='vis-ctrl mix-vis-ctrl'; cvs.height=50;
+    const cvs = document.createElement('canvas'); cvs.className = 'vis-ctrl mix-vis-ctrl'; cvs.height = 50;
     slider.parentNode.insertBefore(cvs, slider);
     allMixCvs.push({ cvs, slider, fn });
     function repaint() { paintMix(cvs, slider, fn); }
     slider.addEventListener('input', repaint);
     let startX, startVal, dragging = false;
-    cvs.addEventListener('touchstart', e => { startX=e.touches[0].clientX; startVal=parseFloat(slider.value); e.preventDefault(); }, { passive:false });
-    cvs.addEventListener('touchmove',  e => { const dx=e.touches[0].clientX-startX, range=parseFloat(slider.max)-parseFloat(slider.min), step=parseFloat(slider.step)||1; const nv=Math.max(parseFloat(slider.min),Math.min(parseFloat(slider.max),Math.round((startVal+(dx/cvs.width)*range)/step)*step)); slider.value=nv; slider.dispatchEvent(new Event('input',{bubbles:true})); repaint(); e.preventDefault(); }, { passive:false });
-    cvs.addEventListener('mousedown',  e => { dragging=true; startX=e.clientX; startVal=parseFloat(slider.value); e.preventDefault(); });
-    window.addEventListener('mousemove', e => { if (!dragging) return; const dx=e.clientX-startX, range=parseFloat(slider.max)-parseFloat(slider.min), step=parseFloat(slider.step)||1; const nv=Math.max(parseFloat(slider.min),Math.min(parseFloat(slider.max),Math.round((startVal+(dx/cvs.width)*range)/step)*step)); slider.value=nv; slider.dispatchEvent(new Event('input',{bubbles:true})); repaint(); });
-    window.addEventListener('mouseup',  () => { dragging=false; });
+    cvs.addEventListener('touchstart', e => { startX = e.touches[0].clientX; startVal = parseFloat(slider.value); e.preventDefault(); }, { passive: false });
+    cvs.addEventListener('touchmove', e => { const dx = e.touches[0].clientX - startX, range = parseFloat(slider.max) - parseFloat(slider.min), step = parseFloat(slider.step) || 1; const nv = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), Math.round((startVal + (dx / cvs.width) * range) / step) * step)); slider.value = nv; slider.dispatchEvent(new Event('input', { bubbles: true })); repaint(); e.preventDefault(); }, { passive: false });
+    cvs.addEventListener('mousedown', e => { dragging = true; startX = e.clientX; startVal = parseFloat(slider.value); e.preventDefault(); });
+    window.addEventListener('mousemove', e => { if (!dragging) return; const dx = e.clientX - startX, range = parseFloat(slider.max) - parseFloat(slider.min), step = parseFloat(slider.step) || 1; const nv = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), Math.round((startVal + (dx / cvs.width) * range) / step) * step)); slider.value = nv; slider.dispatchEvent(new Event('input', { bubbles: true })); repaint(); });
+    window.addEventListener('mouseup', () => { dragging = false; });
   });
 
   document.getElementById('mixer-wrap')?.addEventListener('transitionend', () => {
@@ -959,55 +1200,64 @@ document.querySelectorAll('[data-type]').forEach(btn => {
 
 (function initSynthVisualControls() {
   const A3 = '#f59e0b';
-  function valLabel(ctx, text, w, h, color) { ctx.fillStyle=color||'rgba(245,158,11,0.82)'; ctx.font=`bold ${Math.round(h*0.26)}px monospace`; ctx.textAlign='right'; ctx.textBaseline='bottom'; ctx.fillText(text,w-4,h-3); }
-  function drawAttack(ctx,w,h,t) { const peakX=w*0.06+t*w*0.76,baseY=h*0.84,topY=h*0.1; ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(peakX,topY); ctx.lineTo(w,topY); ctx.lineTo(w,baseY); ctx.closePath(); ctx.fillStyle='rgba(245,158,11,0.07)'; ctx.fill(); ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(peakX,topY); ctx.lineTo(w,topY); ctx.strokeStyle=A3; ctx.lineWidth=2; ctx.stroke(); }
-  function drawDecay(ctx,w,h,t) { const sy=h*0.1,ey=h*0.72; ctx.beginPath(); for(let i=0;i<=60;i++){const x=(i/60)*w,y=sy+(ey-sy)*(1-Math.exp(-(i/60)*(5-t*4.3))); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.strokeStyle=A3; ctx.lineWidth=2; ctx.stroke(); }
-  function drawFilter(ctx,w,h,t) { const cutX=w*0.08+t*w*0.8,topY=h*0.14,botY=h*0.82; ctx.beginPath(); ctx.moveTo(0,topY); ctx.lineTo(cutX,topY); ctx.bezierCurveTo(cutX+w*0.09,topY,cutX+w*0.09,botY,cutX+w*0.2,botY); ctx.lineTo(w,botY); ctx.strokeStyle='#fb923c'; ctx.lineWidth=2; ctx.stroke(); ctx.beginPath(); ctx.moveTo(cutX,topY-3); ctx.lineTo(cutX,botY+3); ctx.strokeStyle='rgba(251,146,60,0.25)'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]); }
-  function drawReso(ctx,w,h,t) { const baseY=h*0.76,cx=w*0.5,ph=t*h*0.6,spread=Math.max(10,w*0.28*(1-t*0.75)); ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(w,baseY); ctx.strokeStyle='rgba(251,146,60,0.22)'; ctx.lineWidth=1; ctx.stroke(); if(ph>1){ctx.beginPath(); ctx.moveTo(0,baseY); ctx.bezierCurveTo(cx-spread,baseY,cx-spread/3,baseY-ph,cx,baseY-ph); ctx.bezierCurveTo(cx+spread/3,baseY-ph,cx+spread,baseY,w,baseY); ctx.strokeStyle='#fb923c'; ctx.lineWidth=2; ctx.stroke();} }
-  function drawVibRate(ctx,w,h,t) { const cycles=1+t*5.5,mid=h*0.5,amp=h*0.3; ctx.beginPath(); for(let x=0;x<=w;x++){const y=mid+Math.sin((x/w)*cycles*Math.PI*2)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.strokeStyle=A3; ctx.lineWidth=2; ctx.stroke(); }
-  function drawVibDepth(ctx,w,h,t) { const amp=t*h*0.4,mid=h*0.5; ctx.beginPath(); for(let x=0;x<=w;x++){const y=mid+Math.sin((x/w)*3*Math.PI*2)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.strokeStyle=amp>1?A3:'rgba(245,158,11,0.28)'; ctx.lineWidth=2; ctx.stroke(); if(amp<2){ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.strokeStyle='rgba(245,158,11,0.28)'; ctx.lineWidth=1; ctx.stroke();} }
-  function drawSustain(ctx,w,h,t) { const susY=h*0.12+(1-t)*h*0.65,atkX=w*0.18,decX=w*0.38,relX=w*0.85; ctx.beginPath(); ctx.moveTo(0,h*0.9); ctx.lineTo(atkX,h*0.1); ctx.lineTo(decX,susY); ctx.lineTo(relX,susY); ctx.lineTo(w,h*0.9); ctx.strokeStyle=A3; ctx.lineWidth=2; ctx.stroke(); ctx.beginPath(); ctx.moveTo(decX,susY); ctx.lineTo(relX,susY); ctx.strokeStyle='rgba(245,158,11,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]); }
-  function drawDetune(ctx,w,h,t) { const mid=h*0.5,amp=h*0.3,offset=(t-0.5)*2; ctx.beginPath(); for(let x=0;x<=w;x++){const y=mid+Math.sin((x/w)*3*Math.PI*2)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.strokeStyle='rgba(245,158,11,0.2)'; ctx.lineWidth=1; ctx.stroke(); const shift=offset*Math.PI*0.6; ctx.beginPath(); for(let x=0;x<=w;x++){const y=mid+Math.sin((x/w)*3*Math.PI*2+shift)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.strokeStyle=Math.abs(offset)>0.02?A3:'rgba(245,158,11,0.3)'; ctx.lineWidth=2; ctx.stroke(); }
-  function drawHarmonics(ctx,w,h,t,v) { const n=Math.round(v); for(let i=1;i<=n;i++){const amp=(h*0.38)/i,mid=h*0.5,alpha=0.9-(i-1)*0.1; ctx.beginPath(); for(let x=0;x<=w;x++){const y=mid+Math.sin((x/w)*i*2*Math.PI)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.strokeStyle=`rgba(167,139,250,${alpha.toFixed(2)})`; ctx.lineWidth=i===1?2:1; ctx.stroke();} }
+  function valLabel(ctx, text, w, h, color) { ctx.fillStyle = color || 'rgba(245,158,11,0.82)'; ctx.font = `bold ${Math.round(h * 0.26)}px monospace`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(text, w - 4, h - 3); }
+  function drawAttack(ctx, w, h, t) { const peakX = w * 0.06 + t * w * 0.76, baseY = h * 0.84, topY = h * 0.1; ctx.beginPath(); ctx.moveTo(0, baseY); ctx.lineTo(peakX, topY); ctx.lineTo(w, topY); ctx.lineTo(w, baseY); ctx.closePath(); ctx.fillStyle = 'rgba(245,158,11,0.07)'; ctx.fill(); ctx.beginPath(); ctx.moveTo(0, baseY); ctx.lineTo(peakX, topY); ctx.lineTo(w, topY); ctx.strokeStyle = A3; ctx.lineWidth = 2; ctx.stroke(); }
+  function drawDecay(ctx, w, h, t) { const sy = h * 0.1, ey = h * 0.72; ctx.beginPath(); for (let i = 0; i <= 60; i++) { const x = (i / 60) * w, y = sy + (ey - sy) * (1 - Math.exp(-(i / 60) * (5 - t * 4.3))); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.strokeStyle = A3; ctx.lineWidth = 2; ctx.stroke(); }
+  function drawFilter(ctx, w, h, t) { const cutX = w * 0.08 + t * w * 0.8, topY = h * 0.14, botY = h * 0.82; ctx.beginPath(); ctx.moveTo(0, topY); ctx.lineTo(cutX, topY); ctx.bezierCurveTo(cutX + w * 0.09, topY, cutX + w * 0.09, botY, cutX + w * 0.2, botY); ctx.lineTo(w, botY); ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 2; ctx.stroke(); ctx.beginPath(); ctx.moveTo(cutX, topY - 3); ctx.lineTo(cutX, botY + 3); ctx.strokeStyle = 'rgba(251,146,60,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); }
+  function drawReso(ctx, w, h, t) { const baseY = h * 0.76, cx = w * 0.5, ph = t * h * 0.6, spread = Math.max(10, w * 0.28 * (1 - t * 0.75)); ctx.beginPath(); ctx.moveTo(0, baseY); ctx.lineTo(w, baseY); ctx.strokeStyle = 'rgba(251,146,60,0.22)'; ctx.lineWidth = 1; ctx.stroke(); if (ph > 1) { ctx.beginPath(); ctx.moveTo(0, baseY); ctx.bezierCurveTo(cx - spread, baseY, cx - spread / 3, baseY - ph, cx, baseY - ph); ctx.bezierCurveTo(cx + spread / 3, baseY - ph, cx + spread, baseY, w, baseY); ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 2; ctx.stroke(); } }
+  function drawVibRate(ctx, w, h, t) { const cycles = 1 + t * 5.5, mid = h * 0.5, amp = h * 0.3; ctx.beginPath(); for (let x = 0; x <= w; x++) { const y = mid + Math.sin((x / w) * cycles * Math.PI * 2) * amp; x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.strokeStyle = A3; ctx.lineWidth = 2; ctx.stroke(); }
+  function drawVibDepth(ctx, w, h, t) { const amp = t * h * 0.4, mid = h * 0.5; ctx.beginPath(); for (let x = 0; x <= w; x++) { const y = mid + Math.sin((x / w) * 3 * Math.PI * 2) * amp; x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.strokeStyle = amp > 1 ? A3 : 'rgba(245,158,11,0.28)'; ctx.lineWidth = 2; ctx.stroke(); if (amp < 2) { ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.strokeStyle = 'rgba(245,158,11,0.28)'; ctx.lineWidth = 1; ctx.stroke(); } }
+  function drawSustain(ctx, w, h, t) { const susY = h * 0.12 + (1 - t) * h * 0.65, atkX = w * 0.18, decX = w * 0.38, relX = w * 0.85; ctx.beginPath(); ctx.moveTo(0, h * 0.9); ctx.lineTo(atkX, h * 0.1); ctx.lineTo(decX, susY); ctx.lineTo(relX, susY); ctx.lineTo(w, h * 0.9); ctx.strokeStyle = A3; ctx.lineWidth = 2; ctx.stroke(); ctx.beginPath(); ctx.moveTo(decX, susY); ctx.lineTo(relX, susY); ctx.strokeStyle = 'rgba(245,158,11,0.3)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); }
+  function drawDetune(ctx, w, h, t) { const mid = h * 0.5, amp = h * 0.3, offset = (t - 0.5) * 2; ctx.beginPath(); for (let x = 0; x <= w; x++) { const y = mid + Math.sin((x / w) * 3 * Math.PI * 2) * amp; x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.strokeStyle = 'rgba(245,158,11,0.2)'; ctx.lineWidth = 1; ctx.stroke(); const shift = offset * Math.PI * 0.6; ctx.beginPath(); for (let x = 0; x <= w; x++) { const y = mid + Math.sin((x / w) * 3 * Math.PI * 2 + shift) * amp; x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.strokeStyle = Math.abs(offset) > 0.02 ? A3 : 'rgba(245,158,11,0.3)'; ctx.lineWidth = 2; ctx.stroke(); }
+  function drawHarmonics(ctx, w, h, t, v) { const n = Math.round(v); for (let i = 1; i <= n; i++) { const amp = (h * 0.38) / i, mid = h * 0.5, alpha = 0.9 - (i - 1) * 0.1; ctx.beginPath(); for (let x = 0; x <= w; x++) { const y = mid + Math.sin((x / w) * i * 2 * Math.PI) * amp; x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.strokeStyle = `rgba(167,139,250,${alpha.toFixed(2)})`; ctx.lineWidth = i === 1 ? 2 : 1; ctx.stroke(); } }
 
   const SYN_DRAW = {
-    'syn-attack':    (ctx,w,h,t,v) => { drawAttack(ctx,w,h,t);      valLabel(ctx,fmtMs(v),w,h); },
-    'syn-decay':     (ctx,w,h,t,v) => { drawDecay(ctx,w,h,t);       valLabel(ctx,fmtMs(v),w,h); },
-    'syn-filter':    (ctx,w,h,t,v) => { drawFilter(ctx,w,h,t);      valLabel(ctx,fmtHz(v),w,h,'#fb923c'); },
-    'syn-res':       (ctx,w,h,t,v) => { drawReso(ctx,w,h,t);        valLabel(ctx,parseFloat(v).toFixed(1),w,h,'#fb923c'); },
-    'syn-vib-rate':  (ctx,w,h,t,v) => { drawVibRate(ctx,w,h,t);     valLabel(ctx,parseFloat(v).toFixed(1)+'Hz',w,h); },
-    'syn-vib-depth': (ctx,w,h,t,v) => { drawVibDepth(ctx,w,h,t);    valLabel(ctx,v+'¢',w,h); },
-    'syn-sustain':   (ctx,w,h,t,v) => { drawSustain(ctx,w,h,t);     valLabel(ctx,v+'%',w,h); },
-    'syn-detune':    (ctx,w,h,t,v) => { drawDetune(ctx,w,h,t);      valLabel(ctx,v+'¢',w,h); },
-    'syn-harmonics': (ctx,w,h,t,v) => { drawHarmonics(ctx,w,h,t,v); valLabel(ctx,Math.round(v)+' harm.',w,h,'rgba(167,139,250,0.85)'); },
+    'syn-attack': (ctx, w, h, t, v) => { drawAttack(ctx, w, h, t); valLabel(ctx, fmtMs(v), w, h); },
+    'syn-decay': (ctx, w, h, t, v) => { drawDecay(ctx, w, h, t); valLabel(ctx, fmtMs(v), w, h); },
+    'syn-filter': (ctx, w, h, t, v) => { drawFilter(ctx, w, h, t); valLabel(ctx, fmtHz(v), w, h, '#fb923c'); },
+    'syn-res': (ctx, w, h, t, v) => { drawReso(ctx, w, h, t); valLabel(ctx, parseFloat(v).toFixed(1), w, h, '#fb923c'); },
+    'syn-vib-rate': (ctx, w, h, t, v) => { drawVibRate(ctx, w, h, t); valLabel(ctx, parseFloat(v).toFixed(1) + 'Hz', w, h); },
+    'syn-vib-depth': (ctx, w, h, t, v) => { drawVibDepth(ctx, w, h, t); valLabel(ctx, v + '¢', w, h); },
+    'syn-sustain': (ctx, w, h, t, v) => { drawSustain(ctx, w, h, t); valLabel(ctx, v + '%', w, h); },
+    'syn-detune': (ctx, w, h, t, v) => { drawDetune(ctx, w, h, t); valLabel(ctx, v + '¢', w, h); },
+    'syn-harmonics': (ctx, w, h, t, v) => { drawHarmonics(ctx, w, h, t, v); valLabel(ctx, Math.round(v) + ' harm.', w, h, 'rgba(167,139,250,0.85)'); },
+    'solo-syn-attack': (ctx, w, h, t, v) => { drawAttack(ctx, w, h, t); valLabel(ctx, fmtMs(v), w, h); },
+    'solo-syn-decay': (ctx, w, h, t, v) => { drawDecay(ctx, w, h, t); valLabel(ctx, fmtMs(v), w, h); },
+    'solo-syn-filter': (ctx, w, h, t, v) => { drawFilter(ctx, w, h, t); valLabel(ctx, fmtHz(v), w, h, '#fb923c'); },
+    'solo-syn-res': (ctx, w, h, t, v) => { drawReso(ctx, w, h, t); valLabel(ctx, parseFloat(v).toFixed(1), w, h, '#fb923c'); },
+    'solo-syn-vib-rate': (ctx, w, h, t, v) => { drawVibRate(ctx, w, h, t); valLabel(ctx, parseFloat(v).toFixed(1) + 'Hz', w, h); },
+    'solo-syn-vib-depth': (ctx, w, h, t, v) => { drawVibDepth(ctx, w, h, t); valLabel(ctx, v + '¢', w, h); },
+    'solo-syn-sustain': (ctx, w, h, t, v) => { drawSustain(ctx, w, h, t); valLabel(ctx, v + '%', w, h); },
+    'solo-syn-detune': (ctx, w, h, t, v) => { drawDetune(ctx, w, h, t); valLabel(ctx, v + '¢', w, h); },
+    'solo-syn-harmonics': (ctx, w, h, t, v) => { drawHarmonics(ctx, w, h, t, v); valLabel(ctx, Math.round(v) + ' harm.', w, h, 'rgba(167,139,250,0.85)'); },
   };
 
   const allSynCvs = [];
   function paintSyn(cvs, slider, fn) {
     if (!cvs.width || !cvs.height) return;
-    const sc = cvs.getContext('2d'); sc.clearRect(0,0,cvs.width,cvs.height);
-    const v=parseFloat(slider.value), t=(v-parseFloat(slider.min))/(parseFloat(slider.max)-parseFloat(slider.min));
-    fn(sc,cvs.width,cvs.height,t,v);
+    const sc = cvs.getContext('2d'); sc.clearRect(0, 0, cvs.width, cvs.height);
+    const v = parseFloat(slider.value), t = (v - parseFloat(slider.min)) / (parseFloat(slider.max) - parseFloat(slider.min));
+    fn(sc, cvs.width, cvs.height, t, v);
   }
   Object.keys(SYN_DRAW).forEach(id => {
     const slider = document.getElementById(id); if (!slider) return;
     const fn = SYN_DRAW[id];
-    const cvs = document.createElement('canvas'); cvs.className='vis-ctrl syn-vis-ctrl'; cvs.height=38;
+    const cvs = document.createElement('canvas'); cvs.className = 'vis-ctrl syn-vis-ctrl'; cvs.height = 38;
     slider.parentNode.insertBefore(cvs, slider);
     allSynCvs.push({ cvs, slider, fn });
-    function repaint() { const rect=cvs.getBoundingClientRect(); if(rect.width>0) cvs.width=Math.round(rect.width); if(cvs.height>0) paintSyn(cvs,slider,fn); }
+    function repaint() { const rect = cvs.getBoundingClientRect(); if (rect.width > 0) cvs.width = Math.round(rect.width); if (cvs.height > 0) paintSyn(cvs, slider, fn); }
     slider.addEventListener('input', repaint);
     let startX, startVal, dragging = false;
-    cvs.addEventListener('mousedown',  e => { dragging=true; startX=e.clientX; startVal=parseFloat(slider.value); e.preventDefault(); });
-    window.addEventListener('mousemove', e => { if (!dragging) return; const dx=e.clientX-startX, range=parseFloat(slider.max)-parseFloat(slider.min), step=parseFloat(slider.step)||1; const nv=Math.max(parseFloat(slider.min),Math.min(parseFloat(slider.max),Math.round((startVal+(dx/cvs.width)*range)/step)*step)); slider.value=nv; slider.dispatchEvent(new Event('input',{bubbles:true})); repaint(); });
-    window.addEventListener('mouseup',  () => { dragging=false; });
-    cvs.addEventListener('touchstart', e => { startX=e.touches[0].clientX; startVal=parseFloat(slider.value); e.preventDefault(); }, { passive:false });
-    cvs.addEventListener('touchmove',  e => { const dx=e.touches[0].clientX-startX, range=parseFloat(slider.max)-parseFloat(slider.min), step=parseFloat(slider.step)||1; const nv=Math.max(parseFloat(slider.min),Math.min(parseFloat(slider.max),Math.round((startVal+(dx/cvs.width)*range)/step)*step)); slider.value=nv; slider.dispatchEvent(new Event('input',{bubbles:true})); repaint(); e.preventDefault(); }, { passive:false });
+    cvs.addEventListener('mousedown', e => { dragging = true; startX = e.clientX; startVal = parseFloat(slider.value); e.preventDefault(); });
+    window.addEventListener('mousemove', e => { if (!dragging) return; const dx = e.clientX - startX, range = parseFloat(slider.max) - parseFloat(slider.min), step = parseFloat(slider.step) || 1; const nv = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), Math.round((startVal + (dx / cvs.width) * range) / step) * step)); slider.value = nv; slider.dispatchEvent(new Event('input', { bubbles: true })); repaint(); });
+    window.addEventListener('mouseup', () => { dragging = false; });
+    cvs.addEventListener('touchstart', e => { startX = e.touches[0].clientX; startVal = parseFloat(slider.value); e.preventDefault(); }, { passive: false });
+    cvs.addEventListener('touchmove', e => { const dx = e.touches[0].clientX - startX, range = parseFloat(slider.max) - parseFloat(slider.min), step = parseFloat(slider.step) || 1; const nv = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), Math.round((startVal + (dx / cvs.width) * range) / step) * step)); slider.value = nv; slider.dispatchEvent(new Event('input', { bubbles: true })); repaint(); e.preventDefault(); }, { passive: false });
   });
 
   document.getElementById('synth-wrap')?.addEventListener('transitionend', () => {
     if (document.getElementById('synth-wrap').classList.contains('open')) {
-      allSynCvs.forEach(({ cvs, slider, fn }) => { const rect=cvs.getBoundingClientRect(); if(rect.width>0) cvs.width=Math.round(rect.width); paintSyn(cvs,slider,fn); });
+      allSynCvs.forEach(({ cvs, slider, fn }) => { const rect = cvs.getBoundingClientRect(); if (rect.width > 0) cvs.width = Math.round(rect.width); paintSyn(cvs, slider, fn); });
     }
   });
 })();
@@ -1020,11 +1270,12 @@ const SLIDE_ELS = () => [
   document.querySelector('.main-layout'),
   document.getElementById('seq-wrap'),
   document.getElementById('drum-wrap'),
+  document.getElementById('solo-wrap'),
 ];
 
 function scrollToSlide(idx) {
   const outer = document.getElementById('outer-wrap');
-  const els   = SLIDE_ELS();
+  const els = SLIDE_ELS();
   const target = els[idx];
   if (!target || !outer) return;
   outer.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
@@ -1038,7 +1289,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   if (!isMobileSlides()) return;
 
   const strip = document.getElementById('mobile-scale-strip');
-  ['mixer-wrap', 'synth-wrap', 'fretboard-wrap'].forEach(id => {
+  ['mixer-wrap', 'synth-wrap', 'solo-synth-wrap', 'fretboard-wrap'].forEach(id => {
     const el = document.getElementById(id);
     if (el && strip) document.body.insertBefore(el, strip);
   });
@@ -1048,18 +1299,19 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     const wrap = document.getElementById(wrapId); if (!wrap) return;
     wrap.classList.remove('open');
     if (wrapId === 'mixer-wrap') { document.getElementById('btn-mixer')?.classList.remove('active-mixer'); document.body.classList.remove('mixer-open'); }
-    else { document.getElementById('btn-synth')?.classList.remove('active-synth'); }
+    else if (wrapId === 'synth-wrap') { document.getElementById('btn-seq-synth')?.classList.remove('active-synth'); }
   }
   function openPanelOverlay(wrapId) {
     const wrap = document.getElementById(wrapId); if (!wrap) return;
     wrap.classList.add('open');
     if (wrapId === 'mixer-wrap') { document.getElementById('btn-mixer')?.classList.add('active-mixer'); document.body.classList.add('mixer-open'); }
-    else { document.getElementById('btn-synth')?.classList.add('active-synth'); }
+    else if (wrapId === 'synth-wrap') { document.getElementById('btn-seq-synth')?.classList.add('active-synth'); }
   }
 
   [
-    { wrapId:'mixer-wrap', label:'<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-mixer"></use></svg>Mixer', color:'#60a5fa' },
-    { wrapId:'synth-wrap', label:'<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-synth"></use></svg>Synth', color:'#f59e0b' },
+    { wrapId: 'mixer-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-mixer"></use></svg>Mixer', color: '#60a5fa' },
+    { wrapId: 'synth-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-synth"></use></svg>Synth', color: '#f59e0b' },
+    { wrapId: 'solo-synth-wrap', label: '🔊 Solo Synth', color: '#c4b5fd' },
   ].forEach(({ wrapId, label, color }) => {
     const panel = document.querySelector(`#${wrapId} .synth-panel`); if (!panel) return;
     const handle = document.createElement('div'); handle.className = 'mob-panel-handle';
@@ -1070,27 +1322,29 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     document.getElementById(wrapId).addEventListener('click', e => { if (e.target === document.getElementById(wrapId)) closePanelOverlay(wrapId); });
   });
 
-  const fabMixer = document.createElement('button'); fabMixer.id='mob-fab-mixer'; fabMixer.className='mob-fab'; fabMixer.innerHTML='<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-mixer"></use></svg>'; fabMixer.setAttribute('aria-label','Mixer');
-  const fabSynth = document.createElement('button'); fabSynth.id='mob-fab-synth'; fabSynth.className='mob-fab'; fabSynth.innerHTML='<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-synth"></use></svg>'; fabSynth.setAttribute('aria-label','Synth');
+  const fabMixer = document.createElement('button'); fabMixer.id = 'mob-fab-mixer'; fabMixer.className = 'mob-fab'; fabMixer.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-mixer"></use></svg>'; fabMixer.setAttribute('aria-label', 'Mixer');
+  const fabSynth = document.createElement('button'); fabSynth.id = 'mob-fab-synth'; fabSynth.className = 'mob-fab'; fabSynth.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-synth"></use></svg>'; fabSynth.setAttribute('aria-label', 'Synth');
   document.body.appendChild(fabMixer); document.body.appendChild(fabSynth);
-  fabMixer.addEventListener('click', () => { const isOpen=document.getElementById('mixer-wrap').classList.contains('open'); isOpen?closePanelOverlay('mixer-wrap'):openPanelOverlay('mixer-wrap'); });
-  fabSynth.addEventListener('click', () => { const isOpen=document.getElementById('synth-wrap').classList.contains('open');  isOpen?closePanelOverlay('synth-wrap'):openPanelOverlay('synth-wrap'); });
+  fabMixer.addEventListener('click', () => { const isOpen = document.getElementById('mixer-wrap').classList.contains('open'); isOpen ? closePanelOverlay('mixer-wrap') : openPanelOverlay('mixer-wrap'); });
+  fabSynth.addEventListener('click', () => { const isOpen = document.getElementById('synth-wrap').classList.contains('open'); isOpen ? closePanelOverlay('synth-wrap') : openPanelOverlay('synth-wrap'); });
 
   loadDrumSamples(() => drawDrumMachine());
 
   const outer = document.getElementById('outer-wrap');
-  const dots  = document.querySelectorAll('.slide-dot');
+  const dots = document.querySelectorAll('.slide-dot');
   const obs = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
       const idx = SLIDE_ELS().indexOf(entry.target); if (idx < 0) return;
       dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-      document.getElementById('btn-seq').classList.toggle('active-seq',   idx === 1);
+      document.getElementById('btn-seq').classList.toggle('active-seq', idx === 1);
       document.getElementById('btn-drums').classList.toggle('active-drums', idx === 2);
+      document.getElementById('btn-solo').classList.toggle('active-solo', idx === 3);
       const showStrip = idx !== 2;
       if (strip) strip.style.display = showStrip ? 'flex' : 'none';
       document.body.style.setProperty('--strip-h', showStrip ? '52px' : '0px');
       if (idx === 0) setTimeout(resize, 60);
+      if (idx === 3) renderSoloPads();
     });
   }, { root: outer, threshold: 0.5 });
 
@@ -1102,11 +1356,11 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   const mobTempSel = document.getElementById('mob-temp-sel');
   Object.entries(TEMPERAMENTS).forEach(([k, v]) => {
     const opt = document.createElement('option');
-    opt.value = k; opt.textContent = v.name.replace('Equal (12-TET)','Equal').replace('Just Intonation (5-limit)','Just').replace('Pythagorean','Pythag.').replace('Meantone (¼-comma)','Meantone').replace('Werckmeister III','Werkm. III');
+    opt.value = k; opt.textContent = v.name.replace('Equal (12-TET)', 'Equal').replace('Just Intonation (5-limit)', 'Just').replace('Pythagorean', 'Pythag.').replace('Meantone (¼-comma)', 'Meantone').replace('Werckmeister III', 'Werkm. III');
     if (k === S.temp) opt.selected = true;
     mobTempSel.appendChild(opt);
   });
-  mobTempSel.addEventListener('change', function() {
+  mobTempSel.addEventListener('change', function () {
     S.temp = this.value;
     const dt = document.getElementById('sel-temperament'); if (dt) dt.value = this.value;
     document.getElementById('temp-desc').textContent = TEMPERAMENTS[S.temp].desc;
@@ -1116,7 +1370,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   const mobFamSel = document.getElementById('mob-family-sel');
   Object.entries(SCALE_FAMILIES).forEach(([k, v]) => {
     const opt = document.createElement('option');
-    const shortName = v.name.replace('Western Modes','Western').replace('Pentatonic & Blues','Penta.').replace('Arabic Maqamat','Arabic').replace('Indian Ragas','Indian');
+    const shortName = v.name.replace('Western Modes', 'Western').replace('Pentatonic & Blues', 'Penta.').replace('Arabic Maqamat', 'Arabic').replace('Indian Ragas', 'Indian');
     opt.value = k; opt.textContent = shortName;
     if (k === S.family) opt.selected = true;
     mobFamSel.appendChild(opt);
@@ -1136,17 +1390,17 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   updateMobRoot();
 
   document.getElementById('mob-root-prev').addEventListener('click', () => {
-    S.root = (S.root + 11) % 12; updateMobRoot(); refreshNoteGrid('root-grid','root'); updateInfo(); draw(); if (S.fretboardOpen) drawFretboard();
+    S.root = (S.root + 11) % 12; updateMobRoot(); refreshNoteGrid('root-grid', 'root'); updateInfo(); draw(); if (S.fretboardOpen) drawFretboard();
   });
   document.getElementById('mob-root-next').addEventListener('click', () => {
-    S.root = (S.root + 1) % 12; updateMobRoot(); refreshNoteGrid('root-grid','root'); updateInfo(); draw(); if (S.fretboardOpen) drawFretboard();
+    S.root = (S.root + 1) % 12; updateMobRoot(); refreshNoteGrid('root-grid', 'root'); updateInfo(); draw(); if (S.fretboardOpen) drawFretboard();
   });
-  mobFamSel.addEventListener('change', function() {
+  mobFamSel.addEventListener('change', function () {
     S.family = this.value;
     const mainFam = document.getElementById('sel-family'); if (mainFam) mainFam.value = this.value;
     buildScaleSelect(); populateMobScale(); updateInfo(); draw();
   });
-  document.getElementById('mob-scale-sel').addEventListener('change', function() {
+  document.getElementById('mob-scale-sel').addEventListener('change', function () {
     S.scaleName = this.value;
     const mainSc = document.getElementById('sel-scale'); if (mainSc) mainSc.value = this.value;
     updateInfo(); draw();
@@ -1164,21 +1418,21 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 
 function syncGetFullState() {
   return {
-    bpm:        SEQ.bpm,
-    rhythmKey:  SEQ.rhythmKey,
-    gate:       SEQ.gate,
-    loopLen:    SEQ.loopLen,
-    grid:       { ...SEQ.grid },
-    drumGrid:   { ...DRUM_GRID },
+    bpm: SEQ.bpm,
+    rhythmKey: SEQ.rhythmKey,
+    gate: SEQ.gate,
+    loopLen: SEQ.loopLen,
+    grid: { ...SEQ.grid },
+    drumGrid: { ...DRUM_GRID },
     drumLoopLen,
   };
 }
 
 function syncApplyFullState(msg) {
-  if (msg.bpm         !== undefined) SEQ.bpm       = msg.bpm;
-  if (msg.rhythmKey   !== undefined) SEQ.rhythmKey  = msg.rhythmKey;
-  if (msg.gate        !== undefined) SEQ.gate       = msg.gate;
-  if (msg.loopLen     !== undefined) SEQ.loopLen    = msg.loopLen;
+  if (msg.bpm !== undefined) SEQ.bpm = msg.bpm;
+  if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
+  if (msg.gate !== undefined) SEQ.gate = msg.gate;
+  if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
   if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
   if (msg.grid) SEQ.grid = { ...msg.grid };
   if (msg.drumGrid) {
@@ -1237,7 +1491,7 @@ function syncHandleMessage(msg) {
       setPeerEpochMs(msg.epochMs);
       if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
       if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
-      if (msg.loopLen   !== undefined) SEQ.loopLen   = msg.loopLen;
+      if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
       syncUpdateUI(msg);
       if (seqEngine.playing) { setEpochMs(msg.epochMs); seqEngine.rebase(true); }
       drawSequencer();
@@ -1251,10 +1505,10 @@ function syncHandleMessage(msg) {
       drawDrumMachine();
       break;
     case 'SEQ_PARAM':
-      if (msg.masterBpm   !== undefined) applyPeerBpm(msg.masterBpm);
-      if (msg.rhythmKey   !== undefined) SEQ.rhythmKey   = msg.rhythmKey;
-      if (msg.gate        !== undefined) SEQ.gate        = msg.gate;
-      if (msg.loopLen     !== undefined) SEQ.loopLen     = msg.loopLen;
+      if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
+      if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
+      if (msg.gate !== undefined) SEQ.gate = msg.gate;
+      if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
       if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
       syncUpdateUI(msg);
       if (seqEngine.playing) seqEngine.rebase(true);
@@ -1275,7 +1529,7 @@ function syncHandleMessage(msg) {
 }
 
 (function initSync() {
-  const params    = new URLSearchParams(location.search);
+  const params = new URLSearchParams(location.search);
   const serverUrl = params.get('sync');
   if (!serverUrl) return;
 
@@ -1291,16 +1545,16 @@ function syncHandleMessage(msg) {
     const label = document.createElement('span');
     label.textContent = 'ratio:'; label.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;margin-right:2px;';
     ratioRow.appendChild(label);
-    const RATIOS = [{ label:'÷3',val:1/3 },{ label:'÷2',val:0.5 },{ label:'×1',val:1 },{ label:'×2',val:2 },{ label:'×3',val:3 }];
+    const RATIOS = [{ label: '÷3', val: 1 / 3 }, { label: '÷2', val: 0.5 }, { label: '×1', val: 1 }, { label: '×2', val: 2 }, { label: '×3', val: 3 }];
     RATIOS.forEach(({ label: lbl, val }) => {
       const btn = document.createElement('button');
       btn.textContent = lbl; btn.dataset.ratio = val;
       btn.style.cssText = 'font-size:11px;padding:1px 7px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;font-family:monospace;';
-      if (val === 1) { btn.style.background='#0f172a'; btn.style.color='#4ade80'; btn.style.borderColor='#4ade80'; }
+      if (val === 1) { btn.style.background = '#0f172a'; btn.style.color = '#4ade80'; btn.style.borderColor = '#4ade80'; }
       btn.addEventListener('click', () => {
         setSyncTempoRatio(val);
-        ratioRow.querySelectorAll('button').forEach(b => { b.style.background='#1e293b'; b.style.color='#94a3b8'; b.style.borderColor='#334155'; });
-        btn.style.background='#0f172a'; btn.style.color='#4ade80'; btn.style.borderColor='#4ade80';
+        ratioRow.querySelectorAll('button').forEach(b => { b.style.background = '#1e293b'; b.style.color = '#94a3b8'; b.style.borderColor = '#334155'; });
+        btn.style.background = '#0f172a'; btn.style.color = '#4ade80'; btn.style.borderColor = '#4ade80';
         applyPeerBpm(masterBpm);
       });
       ratioRow.appendChild(btn);
@@ -1311,7 +1565,7 @@ function syncHandleMessage(msg) {
   Sync.connect(
     serverUrl,
     syncHandleMessage,
-    () => { badge.textContent = '● sync: live';          badge.style.color = '#4ade80'; },
+    () => { badge.textContent = '● sync: live'; badge.style.color = '#4ade80'; },
     () => { badge.textContent = '● sync: reconnecting…'; badge.style.color = '#f87171'; },
     (_newOffset) => {
       if (seqEngine.playing && epochMs !== null && !seqEngine._barJoining) {
@@ -1332,5 +1586,6 @@ buildChordTypeGrid();
 buildTuningSelect();
 updateInfo();
 seqLoadDemo();
+renderSoloPads();
 
 requestAnimationFrame(() => requestAnimationFrame(resize));
