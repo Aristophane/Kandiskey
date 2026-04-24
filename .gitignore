@@ -2,3 +2,7 @@ exports_soundBanks
 dist
 node_modules
 .claude
+.env
+.env.local
+.env.*.local
+logs/

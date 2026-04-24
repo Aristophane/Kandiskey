@@ -163,11 +163,13 @@ header p { display: none; }
 
 /* ── TONNETZ CANVAS ── */
 #tonnetz-canvas {
-  width: 100%; height: 160px;
-  border-radius: 8px;
-  background: rgba(0,0,0,0.25);
-  border: 1px solid rgba(255,255,255,0.06);
   display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  cursor: pointer;
+  touch-action: none;
+  background: rgba(0,0,0,0.2);
 }
 
 /* ── TOUR ── */
@@ -1157,20 +1159,34 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   }
   .mob-fab:active { transform: scale(0.88); }
   #mob-fab-mixer { left: 12px; background: rgba(96,165,250,0.16); border: 1.5px solid rgba(96,165,250,0.55); }
-  #mob-fab-synth { right: 12px; background: rgba(245,158,11,0.16); border: 1.5px solid rgba(245,158,11,0.55); }
+  #mob-fab-mute  { right: 12px; background: rgba(52,211,153,0.16); border: 1.5px solid rgba(52,211,153,0.55); color: #6ee7b7; }
+  #mob-fab-mute.muted { background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.55); color: #f87171; }
 
-  /* Mobile transport FABs — overlaid on viz panel */
+  /* Hide transport + audio + mixer from header — FABs handle them on mobile */
+  .hdr-transport { display: none; }
+  #btn-audio { display: none; }
+  #btn-mixer { display: none; }
+
+  /* BPM button moves to top-right of viz panel */
+  .hdr-bpm {
+    position: fixed; top: calc(var(--viz-top, 46px) + 10px); right: 12px;
+    z-index: 500; margin: 0; padding: 0; border: none;
+    gap: 6px; background: transparent;
+  }
+  .hdr-bpm .tap-btn { display: none; }
+
+  /* Mobile transport FABs — top-left of viz panel */
   #mob-btn-play, #mob-btn-pause, #mob-btn-stop {
     position: fixed; z-index: 500;
-    top: 50vh; transform: translateY(-50%);
-    width: 46px; height: 46px; border-radius: 50%;
+    top: calc(var(--viz-top, 46px) + 10px); transform: none;
+    width: 42px; height: 42px; border-radius: 50%;
     box-shadow: 0 4px 18px rgba(0,0,0,0.5);
     -webkit-tap-highlight-color: transparent;
   }
   #mob-btn-play  { left: 12px; }
   #mob-btn-pause { left: 12px; }
-  #mob-btn-stop  { right: 12px; }
-  #mob-btn-play:active, #mob-btn-pause:active, #mob-btn-stop:active { transform: translateY(-50%) scale(0.88); }
+  #mob-btn-stop  { left: 62px; }
+  #mob-btn-play:active, #mob-btn-pause:active, #mob-btn-stop:active { transform: scale(0.88); }
   body:not(.on-viz-slide) #mob-btn-play,
   body:not(.on-viz-slide) #mob-btn-pause,
   body:not(.on-viz-slide) #mob-btn-stop { visibility: hidden; pointer-events: none; }

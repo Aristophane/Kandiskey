@@ -70,8 +70,18 @@ export function isConnected() { return _connected; }
  * @param {Function} [onDisconnect]
  * @param {Function} [onOffsetChange] called with new offset (ms) after each burst
  */
-export function connect(url, onMessage, onConnect, onDisconnect, onOffsetChange) {
-  _url          = url;
+/**
+ * @param {string}   url            WebSocket relay server base URL (no room)
+ * @param {string}   roomId         Room code to join/create
+ * @param {Function} onMessage
+ * @param {Function} [onConnect]
+ * @param {Function} [onDisconnect]
+ * @param {Function} [onOffsetChange]
+ */
+export function connect(url, roomId, onMessage, onConnect, onDisconnect, onOffsetChange) {
+  // Append room ID as query param so the server can route to the right room
+  const base = url.replace(/\/+$/, '');
+  _url          = `${base}/?room=${encodeURIComponent(roomId)}`;
   _onMessage    = onMessage;
   _onConnect    = onConnect;
   _onDisconnect = onDisconnect;

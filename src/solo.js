@@ -27,13 +27,11 @@ export let soloOctave = 4;
 
 export function setSoloMode(m) {
   soloMode = m;
-  renderSoloPads();
 }
 export function setSoloOctave(o) {
   soloOctave = Math.max(2, Math.min(6, o));
   const el = document.getElementById('solo-oct-val');
   if (el) el.textContent = soloOctave;
-  renderSoloPads();
 }
 
 // Circle-of-fifths rank per chromatic pitch class
@@ -150,6 +148,19 @@ function _playFreqs(freqs) {
     }
 
   });
+}
+
+export function playTonnetzNote(pitchClass, oct) {
+  const o = oct ?? soloOctave;
+  const deg = (pitchClass - S.root + 12) % 12;
+  _playFreqs([_noteFreq(deg, o)]);
+}
+
+export function playTonnetzChord(rootPitch, chordIntervals, oct) {
+  if (!chordIntervals || !chordIntervals.length) return;
+  const o = oct ?? soloOctave;
+  const rootDeg = (rootPitch - S.root + 12) % 12;
+  _playFreqs(chordIntervals.map(interval => _noteFreq(rootDeg + interval, o)));
 }
 
 export function renderSoloPads() {

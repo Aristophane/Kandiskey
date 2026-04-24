@@ -23,7 +23,7 @@ import {
   setSyncGetFullState, setSyncPlayUI, setStopMidiPlayer,
   setDrawFretboardCallback as seqSetDrawFretboard,
 } from './sequencer.js';
-import { SOLO_SYNTH, soloOctave, setSoloMode, setSoloOctave, renderSoloPads } from './solo.js';
+import { SOLO_SYNTH, soloMode, soloOctave, setSoloMode, setSoloOctave, renderSoloPads, playTonnetzNote, playTonnetzChord } from './solo.js';
 
 import {
   draw, addRipple, canvas, ctx, vizPanel, playChordNow,
@@ -293,7 +293,6 @@ function updateInfo() {
     `;
     tbody.appendChild(row);
   });
-  renderSoloPads();
   drawTonnetz();
 }
 
@@ -312,12 +311,27 @@ function _findLatticeCoords(pitch) {
   return best;
 }
 
+let _tonnetzNodes = [];
+let _tonnetzTriangles = [];
+let _tonnetzFlash = null; // { pitch, until }
+
+function _pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
+  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+  const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+  const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+  return !(hasNeg && hasPos);
+}
+
 function drawTonnetz() {
   const cvs = document.getElementById('tonnetz-canvas');
   if (!cvs) return;
-  const W = cvs.offsetWidth || 260;
-  const H = 160;
+  const W = cvs.offsetWidth || 300;
+  const H = cvs.offsetHeight || 300;
+  if (!W || !H) return;
   if (cvs.width !== W) cvs.width = W;
+  if (cvs.height !== H) cvs.height = H;
 
   const ctx2 = cvs.getContext('2d');
   ctx2.clearRect(0, 0, W, H);
@@ -325,6 +339,7 @@ function drawTonnetz() {
   const scaleNotes = getScaleNotes();
   const chordIntervals = CHORDS[S.chordName];
   const chordNotes = chordIntervals ? chordIntervals.map(i => (S.chordRoot + i) % 12) : [];
+  const flashNow = _tonnetzFlash && Date.now() < _tonnetzFlash.until;
 
   const sx = W / 8;
   const sy = H / 4.5;
@@ -341,18 +356,27 @@ function drawTonnetz() {
       nodes.push({ a, b, pitch, x, y });
     }
   }
+  _tonnetzNodes = nodes;
 
   const findNode = (a, b) => nodes.find(n => n.a === a && n.b === b);
+
+  // Build triangle list for hit-testing
+  const triangles = [];
+  for (let a = -4; a <= 3; a++) {
+    for (let b = -2; b <= 2; b++) {
+      const n0 = findNode(a, b), n1 = findNode(a + 1, b);
+      const n2 = findNode(a, b + 1), n3 = findNode(a + 1, b - 1);
+      if (n0 && n1 && n2) triangles.push({ root: n0.pitch, quality: 'maj', verts: [n0, n1, n2] });
+      if (n0 && n1 && n3) triangles.push({ root: n0.pitch, quality: 'min', verts: [n0, n1, n3] });
+    }
+  }
+  _tonnetzTriangles = triangles;
 
   // Draw edges
   ctx2.save();
   ctx2.lineWidth = 0.8;
   nodes.forEach(n => {
-    [
-      findNode(n.a + 1, n.b),
-      findNode(n.a, n.b + 1),
-      findNode(n.a + 1, n.b - 1),
-    ].forEach(m => {
+    [findNode(n.a + 1, n.b), findNode(n.a, n.b + 1), findNode(n.a + 1, n.b - 1)].forEach(m => {
       if (!m) return;
       const bothScale = scaleNotes.includes(n.pitch) && scaleNotes.includes(m.pitch);
       ctx2.strokeStyle = bothScale ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.06)';
@@ -361,7 +385,7 @@ function drawTonnetz() {
   });
   ctx2.restore();
 
-  // Draw chord triangle for Major / Minor chords with a fifth
+  // Chord triangle
   if (chordIntervals && chordIntervals.includes(7)) {
     const [a0, b0] = _findLatticeCoords(S.chordRoot);
     const isMinor = chordIntervals[1] === 3;
@@ -378,33 +402,126 @@ function drawTonnetz() {
       ctx2.fillStyle = isMinor ? 'rgba(96,165,250,0.15)' : 'rgba(52,211,153,0.15)';
       ctx2.fill();
       ctx2.strokeStyle = isMinor ? 'rgba(96,165,250,0.6)' : 'rgba(52,211,153,0.6)';
-      ctx2.lineWidth = 1.5;
-      ctx2.stroke();
+      ctx2.lineWidth = 1.5; ctx2.stroke();
       ctx2.restore();
     }
   }
 
+  // Flash triangle highlight
+  if (flashNow && _tonnetzFlash.verts) {
+    const [fv0, fv1, fv2] = _tonnetzFlash.verts;
+    ctx2.save();
+    ctx2.beginPath();
+    ctx2.moveTo(fv0.x, fv0.y);
+    ctx2.lineTo(fv1.x, fv1.y);
+    ctx2.lineTo(fv2.x, fv2.y);
+    ctx2.closePath();
+    ctx2.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx2.fill();
+    ctx2.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx2.lineWidth = 2;
+    ctx2.stroke();
+    ctx2.restore();
+  }
+
   // Draw nodes
   nodes.forEach(n => {
-    const isScale = scaleNotes.includes(n.pitch);
-    const isChord = chordNotes.includes(n.pitch);
-    const isRoot  = isChord && n.pitch === S.chordRoot;
+    const isScale  = scaleNotes.includes(n.pitch);
+    const isChord  = chordNotes.includes(n.pitch);
+    const isRoot   = isChord && n.pitch === S.chordRoot;
+    const isFlash  = flashNow && n.pitch === _tonnetzFlash.pitch;
     const r = isRoot ? 9 : isChord ? 8 : isScale ? 5.5 : 3.5;
+    const rr = isFlash ? r * 1.5 : r;
 
-    ctx2.beginPath(); ctx2.arc(n.x, n.y, r, 0, Math.PI * 2);
-    ctx2.fillStyle = isRoot ? '#ef4444' : isChord ? '#60a5fa' : isScale ? 'rgba(167,139,250,0.6)' : 'rgba(255,255,255,0.07)';
+    ctx2.beginPath(); ctx2.arc(n.x, n.y, rr, 0, Math.PI * 2);
+    ctx2.fillStyle = isFlash ? '#fff'
+      : isRoot  ? '#ef4444'
+      : isChord ? '#60a5fa'
+      : isScale ? 'rgba(167,139,250,0.6)'
+      : 'rgba(255,255,255,0.07)';
     ctx2.fill();
 
-    if (isScale || isChord) {
-      ctx2.strokeStyle = isRoot ? '#fca5a5' : isChord ? '#93c5fd' : 'rgba(167,139,250,0.45)';
+    if (isScale || isChord || isFlash) {
+      ctx2.strokeStyle = isFlash ? 'rgba(255,255,255,0.8)'
+        : isRoot  ? '#fca5a5'
+        : isChord ? '#93c5fd'
+        : 'rgba(167,139,250,0.45)';
       ctx2.lineWidth = 1; ctx2.stroke();
-      ctx2.fillStyle = '#fff';
-      ctx2.font = `${isChord ? '600 ' : ''}${Math.max(7, Math.round(r * 1.3))}px sans-serif`;
+      ctx2.fillStyle = isFlash ? '#111' : '#fff';
+      ctx2.font = `${(isChord || isFlash) ? '600 ' : ''}${Math.max(7, Math.round(rr * 1.3))}px sans-serif`;
       ctx2.textAlign = 'center'; ctx2.textBaseline = 'middle';
       ctx2.fillText(CHROMATIC[n.pitch], n.x, n.y);
     }
   });
+
+  // Schedule next frame if flash is active
+  if (flashNow) requestAnimationFrame(drawTonnetz);
 }
+
+// ── Tonnetz interaction ──────────────────────────────────────────────
+(function wireTonnetz() {
+  const cvs = document.getElementById('tonnetz-canvas');
+  if (!cvs) return;
+
+  function canvasXY(clientX, clientY) {
+    const rect = cvs.getBoundingClientRect();
+    return {
+      mx: (clientX - rect.left) * (cvs.width / rect.width),
+      my: (clientY - rect.top)  * (cvs.height / rect.height),
+    };
+  }
+
+  function onTonnetzTrigger(clientX, clientY) {
+    const { mx, my } = canvasXY(clientX, clientY);
+
+    // Find closest node
+    let closest = null, closestD = Infinity;
+    _tonnetzNodes.forEach(n => {
+      const d = Math.hypot(n.x - mx, n.y - my);
+      if (d < closestD) { closestD = d; closest = n; }
+    });
+
+    if (soloMode === 'notes') {
+      if (!closest) return;
+      _tonnetzFlash = { pitch: closest.pitch, until: Date.now() + 300, verts: null };
+      drawTonnetz();
+      playTonnetzNote(closest.pitch);
+      return;
+    }
+
+    // Chords mode: node wins if close, else check triangle interior
+    let rootPitch = null;
+    let flashVerts = null;
+
+    if (closestD < 15 && closest) {
+      rootPitch = closest.pitch;
+      // Find matching triangle for this root based on current chord quality
+      const isMinorChord = CHORDS[S.chordName] && CHORDS[S.chordName][1] === 3;
+      const wantQ = isMinorChord ? 'min' : 'maj';
+      const match = _tonnetzTriangles.find(t => t.root === rootPitch && t.quality === wantQ);
+      if (match) flashVerts = match.verts;
+    } else {
+      for (const tri of _tonnetzTriangles) {
+        const [ta, tb, tc] = tri.verts;
+        if (_pointInTriangle(mx, my, ta.x, ta.y, tb.x, tb.y, tc.x, tc.y)) {
+          rootPitch = tri.root;
+          flashVerts = tri.verts;
+          break;
+        }
+      }
+    }
+    if (rootPitch === null) return;
+
+    _tonnetzFlash = { pitch: rootPitch, until: Date.now() + 350, verts: flashVerts };
+    S.chordRoot = rootPitch;
+    refreshNoteGrid('chord-grid', 'chordRoot');
+    updateInfo(); draw(); drawFretboard();
+    playTonnetzChord(rootPitch, CHORDS[S.chordName]);
+  }
+
+  cvs.addEventListener('mousedown', e => { e.preventDefault(); onTonnetzTrigger(e.clientX, e.clientY); });
+  cvs.addEventListener('touchstart', e => { e.preventDefault(); onTonnetzTrigger(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+})();
 
 // ── RESIZE ──────────────────────────────────────────────────────────
 
@@ -425,6 +542,8 @@ function resize() {
 
 const ro = new ResizeObserver(() => resize());
 ro.observe(vizPanel);
+const roTonnetz = new ResizeObserver(() => drawTonnetz());
+roTonnetz.observe(document.getElementById('solo-wrap'));
 
 // ── HEADER BUTTONS ───────────────────────────────────────────────────
 
@@ -977,7 +1096,7 @@ document.getElementById('btn-solo').addEventListener('click', function () {
   const wrap = document.getElementById('solo-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-solo', open);
-  if (open) renderSoloPads();
+  if (open) setTimeout(drawTonnetz, 50);
 });
 
 document.getElementById('btn-solo-synth').addEventListener('click', () => {
@@ -988,15 +1107,17 @@ document.getElementById('solo-mode-chords').addEventListener('click', function (
   setSoloMode('chords');
   this.classList.add('active');
   document.getElementById('solo-mode-notes').classList.remove('active');
+  drawTonnetz();
 });
 document.getElementById('solo-mode-notes').addEventListener('click', function () {
   setSoloMode('notes');
   this.classList.add('active');
   document.getElementById('solo-mode-chords').classList.remove('active');
+  drawTonnetz();
 });
 
-document.getElementById('solo-oct-down').addEventListener('click', () => setSoloOctave(soloOctave - 1));
-document.getElementById('solo-oct-up').addEventListener('click', () => setSoloOctave(soloOctave + 1));
+document.getElementById('solo-oct-down').addEventListener('click', () => { setSoloOctave(soloOctave - 1); drawTonnetz(); });
+document.getElementById('solo-oct-up').addEventListener('click', () => { setSoloOctave(soloOctave + 1); drawTonnetz(); });
 
 {
   const fmtMs = v => v < 1000 ? Math.round(v) + 'ms' : (v / 1000).toFixed(2) + 's';
@@ -1462,6 +1583,13 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 
   document.body.classList.add('on-viz-slide'); // slide 0 active on load
 
+  // Measure precise top of viz panel (below header + slide-nav) for overlay positioning
+  requestAnimationFrame(() => {
+    const hdrH = document.querySelector('header')?.offsetHeight || 0;
+    const navH = document.getElementById('slide-nav')?.offsetHeight || 0;
+    document.body.style.setProperty('--viz-top', `${hdrH + navH + 4}px`);
+  });
+
   const strip = document.getElementById('mobile-scale-strip');
   ['mixer-wrap', 'synth-wrap', 'solo-synth-wrap', 'fretboard-wrap'].forEach(id => {
     const el = document.getElementById(id);
@@ -1497,10 +1625,28 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   });
 
   const fabMixer = document.createElement('button'); fabMixer.id = 'mob-fab-mixer'; fabMixer.className = 'mob-fab'; fabMixer.innerHTML = '<svg viewBox="0 0 20 20" width="22" height="22" fill="currentColor"><rect x="3" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="9" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="15" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="1" y="8" width="6" height="3" rx="1.5"/><rect x="7" y="5" width="6" height="3" rx="1.5"/><rect x="13" y="11" width="6" height="3" rx="1.5"/></svg>'; fabMixer.setAttribute('aria-label', 'Mixer');
-  const fabSynth = document.createElement('button'); fabSynth.id = 'mob-fab-synth'; fabSynth.className = 'mob-fab'; fabSynth.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-synth"></use></svg>'; fabSynth.setAttribute('aria-label', 'Sound');
-  document.body.appendChild(fabMixer); document.body.appendChild(fabSynth);
+
+  const _muteIconOn  = '<svg viewBox="0 0 20 20" width="22" height="22"><path d="M3 7.5h3l4-3.5v12l-4-3.5H3V7.5z" fill="currentColor"/><path d="M13 7a4.5 4.5 0 010 6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M15.5 4.5a7.5 7.5 0 010 11" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>';
+  const _muteIconOff = '<svg viewBox="0 0 20 20" width="22" height="22"><path d="M3 7.5h3l4-3.5v12l-4-3.5H3V7.5z" fill="currentColor"/><line x1="13" y1="7" x2="18" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="7" x2="13" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const fabMute = document.createElement('button'); fabMute.id = 'mob-fab-mute'; fabMute.className = 'mob-fab';
+  fabMute.innerHTML = audio.enabled ? _muteIconOn : _muteIconOff;
+  fabMute.classList.toggle('muted', !audio.enabled);
+  fabMute.setAttribute('aria-label', 'Mute');
+
+  document.body.appendChild(fabMixer); document.body.appendChild(fabMute);
   fabMixer.addEventListener('click', () => { const isOpen = document.getElementById('mixer-wrap').classList.contains('open'); isOpen ? closePanelOverlay('mixer-wrap') : openPanelOverlay('mixer-wrap'); });
-  fabSynth.addEventListener('click', () => { const isOpen = document.getElementById('synth-wrap').classList.contains('open'); isOpen ? closePanelOverlay('synth-wrap') : openPanelOverlay('synth-wrap'); });
+  fabMute.addEventListener('click', () => {
+    audio.enabled = !audio.enabled;
+    fabMute.innerHTML = audio.enabled ? _muteIconOn : _muteIconOff;
+    fabMute.classList.toggle('muted', !audio.enabled);
+    const hdrBtn = document.getElementById('btn-audio');
+    if (hdrBtn) {
+      hdrBtn.classList.toggle('active-audio', audio.enabled);
+      hdrBtn.innerHTML = audio.enabled
+        ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg><span class="btn-text"> Audio</span>'
+        : '<span class="hdr-icon">🔇</span><span class="btn-text"> Muted</span>';
+    }
+  });
 
   loadDrumSamples(() => drawDrumMachine());
 
@@ -1519,7 +1665,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
       if (strip) strip.style.display = showStrip ? 'flex' : 'none';
       document.body.style.setProperty('--strip-h', showStrip ? '52px' : '0px');
       if (idx === 0) setTimeout(resize, 60);
-      if (idx === 3) renderSoloPads();
+      if (idx === 3) setTimeout(drawTonnetz, 50);
     });
   }, { root: outer, threshold: 0.5 });
 
@@ -1704,23 +1850,81 @@ function syncHandleMessage(msg) {
 }
 
 (function initSync() {
-  const params = new URLSearchParams(location.search);
-  const serverUrl = params.get('sync');
+  const params    = new URLSearchParams(location.search);
+
+  // Server URL: prefer ?sync= param (local dev), then VITE env var (production build)
+  const serverUrl = params.get('sync') ?? import.meta.env?.VITE_SYNC_URL ?? null;
   if (!serverUrl) return;
 
+  // Room code: use ?room= param or generate a fresh one and push it into the URL
+  function genRoom() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  }
+  let roomId = (params.get('room') ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!roomId) {
+    roomId = genRoom();
+    const next = new URL(location.href);
+    next.searchParams.set('room', roomId);
+    history.replaceState(null, '', next.toString());
+  }
+
+  // ── Badge ────────────────────────────────────────────────────────
   const badge = document.createElement('div');
-  badge.style.cssText = 'position:fixed;top:8px;right:12px;font-size:11px;padding:2px 8px;border-radius:10px;background:#1e293b;color:#94a3b8;font-family:monospace;z-index:9999;pointer-events:none;';
-  badge.textContent = '● sync: connecting…';
+  badge.style.cssText = [
+    'position:fixed;top:8px;right:12px;z-index:9999',
+    'display:flex;align-items:center;gap:6px',
+    'font-size:11px;font-family:monospace',
+    'background:#0f172a;border:1px solid #1e293b',
+    'border-radius:10px;padding:3px 10px',
+  ].join(';');
+
+  const badgeText = document.createElement('span');
+  badgeText.style.color = '#94a3b8';
+  badgeText.textContent = `● ${roomId}  connecting…`;
+
+  // Share / copy button
+  const shareBtn = document.createElement('button');
+  shareBtn.textContent = '⎘ share';
+  shareBtn.title = 'Copy invite link';
+  shareBtn.style.cssText = [
+    'font-size:10px;font-family:monospace;cursor:pointer',
+    'padding:1px 6px;border-radius:5px',
+    'border:1px solid #334155;background:#1e293b;color:#94a3b8',
+  ].join(';');
+  shareBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(location.href).then(() => {
+      shareBtn.textContent = '✓ copied';
+      setTimeout(() => { shareBtn.textContent = '⎘ share'; }, 2000);
+    });
+  });
+
+  badge.appendChild(badgeText);
+  badge.appendChild(shareBtn);
   document.body.appendChild(badge);
 
+  let peerCount = 0;
+  function updateBadge(state) {
+    const peers = peerCount > 0 ? `  ${peerCount} peer${peerCount > 1 ? 's' : ''}` : '  waiting…';
+    if (state === 'live') {
+      badgeText.style.color = '#4ade80';
+      badgeText.textContent = `● ${roomId}${peers}`;
+    } else {
+      badgeText.style.color = '#f87171';
+      badgeText.textContent = `● ${roomId}  reconnecting…`;
+    }
+  }
+
+  // ── Tempo ratio UI ───────────────────────────────────────────────
   const bpmGroup = document.getElementById('seq-bpm')?.closest('.syn-group') ?? document.getElementById('seq-bpm')?.parentElement;
   if (bpmGroup) {
     const ratioRow = document.createElement('div');
     ratioRow.style.cssText = 'display:flex;gap:4px;margin-top:4px;align-items:center;';
     const label = document.createElement('span');
-    label.textContent = 'ratio:'; label.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;margin-right:2px;';
+    label.textContent = 'ratio:';
+    label.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;margin-right:2px;';
     ratioRow.appendChild(label);
-    const RATIOS = [{ label: '÷3', val: 1 / 3 }, { label: '÷2', val: 0.5 }, { label: '×1', val: 1 }, { label: '×2', val: 2 }, { label: '×3', val: 3 }];
+    const RATIOS = [{ label: '÷3', val: 1/3 }, { label: '÷2', val: 0.5 }, { label: '×1', val: 1 }, { label: '×2', val: 2 }, { label: '×3', val: 3 }];
     RATIOS.forEach(({ label: lbl, val }) => {
       const btn = document.createElement('button');
       btn.textContent = lbl; btn.dataset.ratio = val;
@@ -1737,12 +1941,21 @@ function syncHandleMessage(msg) {
     bpmGroup.appendChild(ratioRow);
   }
 
+  // ── Connect ──────────────────────────────────────────────────────
+  const _origHandleMessage = syncHandleMessage;
+  function handleMessageWithPeerCount(msg) {
+    if (msg.type === 'PEER_JOINED') { peerCount = Math.max(1, (msg.peers ?? 1) - 1); updateBadge('live'); }
+    if (msg.type === 'PEER_LEFT')   { peerCount = Math.max(0, peerCount - 1); updateBadge('live'); }
+    _origHandleMessage(msg);
+  }
+
   Sync.connect(
     serverUrl,
-    syncHandleMessage,
-    () => { badge.textContent = '● sync: live'; badge.style.color = '#4ade80'; },
-    () => { badge.textContent = '● sync: reconnecting…'; badge.style.color = '#f87171'; },
-    (_newOffset) => {
+    roomId,
+    handleMessageWithPeerCount,
+    () => { peerCount = 0; updateBadge('live'); },
+    () => { peerCount = 0; updateBadge('offline'); },
+    () => {
       if (seqEngine.playing && epochMs !== null && !seqEngine._barJoining) {
         seqEngine._corrTick = 49;
       }
@@ -1761,6 +1974,4 @@ buildChordTypeGrid();
 buildTuningSelect();
 updateInfo();
 seqLoadDemo();
-renderSoloPads();
-
 requestAnimationFrame(() => requestAnimationFrame(resize));

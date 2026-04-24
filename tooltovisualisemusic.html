@@ -16,11 +16,11 @@
       <button class="hdr-play-btn" id="btn-seq-play" title="Play (Space)"><svg class="hdr-icon" viewBox="0 0 20 20"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg><span class="btn-text"> Play</span></button>
       <button class="hdr-pause-btn" id="btn-seq-pause" title="Pause (Space)" style="display:none"><svg class="hdr-icon" viewBox="0 0 20 20"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg><span class="btn-text"> Pause</span></button>
       <button class="hdr-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg><span class="btn-text"> Stop</span></button>
-      <div class="hdr-bpm">
-        <input type="range" id="seq-bpm" min="40" max="240" step="1" value="120" style="display:none">
-        <button class="bpm-display-btn" id="bpm-display-btn" title="Set tempo"><span id="seq-bpm-val">120</span><span class="bpm-unit"> BPM</span></button>
-        <button class="tap-btn" id="btn-tap-tempo" title="Tap to set tempo">TAP</button>
-      </div>
+    </div>
+    <div class="hdr-bpm">
+      <input type="range" id="seq-bpm" min="40" max="240" step="1" value="120" style="display:none">
+      <button class="bpm-display-btn" id="bpm-display-btn" title="Set tempo"><span id="seq-bpm-val">120</span><span class="bpm-unit"> BPM</span></button>
+      <button class="tap-btn" id="btn-tap-tempo" title="Tap to set tempo">TAP</button>
     </div>
     <div class="hdr-actions">
       <button class="hdr-btn active-audio" id="btn-audio" title="Toggle audio">
@@ -113,6 +113,7 @@
     <div class="legend-item"><div class="ld" style="background:#10b981;box-shadow:0 0 4px #10b981"></div>7th / Extensions</div>
   </div>
 
+
 </div>
 
 <!-- Main area: canvas + chord + panels -->
@@ -138,11 +139,6 @@
     <div class="control-group">
       <span class="control-label">Chord Type</span>
       <div class="chord-grid" id="chord-type-grid"></div>
-    </div>
-
-    <div class="control-group">
-      <span class="control-label">Tonnetz</span>
-      <canvas id="tonnetz-canvas" height="160"></canvas>
     </div>
 
     <div style="margin-top:6px; border-top:1px solid var(--border); padding-top:12px;">
@@ -255,7 +251,7 @@
       <div class="seq-sep"></div>
       <button class="midi-btn" id="btn-solo-synth">🔊 Sound</button>
     </div>
-    <div id="solo-pads"></div>
+    <canvas id="tonnetz-canvas"></canvas>
   </div>
 </div>
 
