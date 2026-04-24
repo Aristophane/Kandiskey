@@ -49,7 +49,19 @@ export const SCALE_FAMILIES = {
     'Natural Minor (Aeolian)': [0,2,3,5,7,8,10],
     'Locrian':                 [0,1,3,5,6,8,10],
     'Harmonic Minor':          [0,2,3,5,7,8,11],
+    'Locrian #6':              [0,1,3,5,6,9,10],
+    'Ionian #5':               [0,2,4,5,8,9,11],
+    'Dorian #4':               [0,2,3,6,7,9,10],
+    'Lydian #2':               [0,3,4,6,7,9,11],
     'Melodic Minor (asc)':     [0,2,3,5,7,9,11],
+    'Dorian b2':               [0,1,3,5,7,9,10],
+    'Lydian Augmented':        [0,2,4,6,8,9,11],
+    'Acoustic':                [0,2,4,6,7,9,10],
+    'Mixolydian b6':           [0,2,4,5,7,8,10],
+    'Locrian #2':              [0,2,3,5,6,8,10],
+    'Altered':                 [0,1,3,4,6,8,10],
+    'Neapolitan Major':        [0,1,3,5,7,9,11],
+    'Neapolitan Minor':        [0,1,3,5,7,8,11],
     'Whole Tone':              [0,2,4,6,8,10],
     'Octatonic (H-W)':         [0,1,3,4,6,7,9,10],
     'Octatonic (W-H)':         [0,2,3,5,6,8,9,11],
@@ -58,6 +70,7 @@ export const SCALE_FAMILIES = {
   pentatonic: { name: 'Pentatonic & Blues', scales: {
     'Major Pentatonic':        [0,2,4,7,9],
     'Minor Pentatonic':        [0,3,5,7,10],
+    'Man Gong':                [0,3,5,8,10],
     'Blues (6-note)':          [0,3,5,6,7,10],
     'Egyptian':                [0,2,5,7,10],
     'Hirajoshi':               [0,2,3,7,8],
@@ -66,6 +79,7 @@ export const SCALE_FAMILIES = {
     'Yo':                      [0,2,5,7,9],
     'Kumoi':                   [0,2,3,7,9],
     'Dominant Pentatonic':     [0,2,4,7,10],
+    'Insen':                   [0,1,5,7,10],
   }},
   arabic: { name: 'Arabic Maqamat', scales: {
     'Ajam':              [0,2,4,5,7,9,11],
@@ -104,6 +118,7 @@ export const SCALE_FAMILIES = {
     'Darbari Kanada':          [0,2,3,5,7,8,10],
     'Bhupali':                 [0,2,4,7,9],
     'Bageshree':               [0,2,3,5,7,8,10],
+    'Shanmukhapriya':          [0,2,3,6,7,8,10],
   }},
   none: { name: '— None —', scales: {
     '— None —': []

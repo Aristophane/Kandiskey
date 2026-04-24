@@ -115,7 +115,9 @@ function buildNoteGrid(id, stateKey) {
     btn.textContent = n;
     btn.addEventListener('click', () => {
       if (stateKey === 'root') {
-        const mode = findRelativeMode(i); // must run before S.root changes
+        const inScale = getScaleNotes().includes(i); // must check before S.root changes
+        const mode    = inScale ? findRelativeMode(i) : null;
+        if (inScale && !mode) return; // note in scale but no named rotation — do nothing
         S.root = i;
         if (mode) {
           S.family    = mode.family;
