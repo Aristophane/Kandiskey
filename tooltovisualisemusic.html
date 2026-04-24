@@ -76,6 +76,11 @@
   <div class="control-group">
     <span class="control-label">Root Note</span>
     <div class="note-grid" id="root-grid"></div>
+    <div class="octave-ctrl">
+      <button class="oct-btn" id="btn-oct-down">−</button>
+      <span class="oct-lbl" id="oct-lbl">Oct 4</span>
+      <button class="oct-btn" id="btn-oct-up">+</button>
+    </div>
   </div>
 
   <div class="control-group">
@@ -342,8 +347,8 @@
     <!-- Effects (canvas vis-ctrl injected by JS) -->
     <div class="syn-group">
       <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-reverb"></use></svg> Reverb</span>
-      <span class="syn-val" id="mix-rev-val">10%</span>
-      <input type="range" class="syn-slider" id="mix-reverb" min="0" max="80" step="1" value="10">
+      <span class="syn-val" id="mix-rev-val">50%</span>
+      <input type="range" class="syn-slider" id="mix-reverb" min="0" max="100" step="1" value="50">
     </div>
     <div class="syn-group">
       <span class="syn-label"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-drive"></use></svg> Drive</span>

@@ -92,6 +92,21 @@ function syncPlayUI(state) {
 
 // ── UI BUILDING ─────────────────────────────────────────────────────
 
+function findRelativeMode(newRoot) {
+  const currentNotes = getScaleNotes();
+  if (!currentNotes.includes(newRoot)) return null;
+  const intervals = currentNotes.map(n => (n - newRoot + 12) % 12).sort((a, b) => a - b).join(',');
+  const families = [S.family, ...Object.keys(SCALE_FAMILIES).filter(k => k !== S.family)];
+  for (const fk of families) {
+    const f = SCALE_FAMILIES[fk];
+    for (const [name, degs] of Object.entries(f.scales)) {
+      if (degs.length && [...degs].sort((a, b) => a - b).join(',') === intervals)
+        return { family: fk, scaleName: name };
+    }
+  }
+  return null;
+}
+
 function buildNoteGrid(id, stateKey) {
   const el = document.getElementById(id);
   CHROMATIC.forEach((n, i) => {
@@ -99,7 +114,22 @@ function buildNoteGrid(id, stateKey) {
     btn.className = 'note-btn';
     btn.textContent = n;
     btn.addEventListener('click', () => {
-      S[stateKey] = i;
+      if (stateKey === 'root') {
+        const mode = findRelativeMode(i); // must run before S.root changes
+        S.root = i;
+        if (mode) {
+          S.family    = mode.family;
+          S.scaleName = mode.scaleName;
+          const fSel = document.getElementById('sel-family');
+          if (fSel) fSel.value = S.family;
+          const sSel = document.getElementById('sel-scale');
+          if (sSel) sSel.value = S.scaleName;
+          const ms = document.getElementById('mob-scale-sel');
+          if (ms) ms.value = S.scaleName;
+        }
+      } else {
+        S[stateKey] = i;
+      }
       refreshNoteGrid(id, stateKey);
       updateInfo(); draw(); drawFretboard();
       if (!seqEngine.playing) {
@@ -118,9 +148,11 @@ function buildNoteGrid(id, stateKey) {
 
 function refreshNoteGrid(id, stateKey) {
   const cls = stateKey === 'chordRoot' ? 'active-chord' : 'active';
+  const scaleNotes = stateKey === 'root' ? getScaleNotes() : null;
   document.querySelectorAll(`#${id} .note-btn`).forEach((btn, i) => {
     btn.classList.remove('active', 'active-chord');
     if (S[stateKey] === i) btn.classList.add(cls);
+    if (scaleNotes) btn.classList.toggle('out-of-scale', !scaleNotes.includes(i));
   });
 }
 
@@ -154,6 +186,7 @@ function buildFamilySelect() {
     S.family = sel.value;
     buildScaleSelect();
     updateInfo(); draw(); drawFretboard();
+    refreshNoteGrid('root-grid', 'root');
   });
 }
 
@@ -245,23 +278,23 @@ function getScaleFreqs() {
     return freqs;
   }
   const scale = getScale();
-  const freqs = scale.map(d => audio.degreeFreq(S.root, d, S.temp, 4));
-  freqs.push(audio.degreeFreq(S.root, 0, S.temp, 5));
+  const freqs = scale.map(d => audio.degreeFreq(S.root, d, S.temp, S.octave));
+  freqs.push(audio.degreeFreq(S.root, 0, S.temp, S.octave + 1));
   return freqs;
 }
 
 // Avoid re-importing MAQAM_CENTS — already in visualizer.js. Use a closure.
 import { MAQAM_CENTS } from './data.js';
 function _getScaleFreqs() {
-  const C4 = 261.62556, rootHz = C4 * Math.pow(2, S.root / 12);
+  const C4 = 261.62556, rootHz = C4 * Math.pow(2, S.root / 12) * Math.pow(2, S.octave - 4);
   if (S.family === 'arabic' && MAQAM_CENTS[S.scaleName]) {
     const freqs = MAQAM_CENTS[S.scaleName].map(c => rootHz * Math.pow(2, c / 1200));
     freqs.push(rootHz * 2);
     return freqs;
   }
   const scale = getScale();
-  const freqs = scale.map(d => audio.degreeFreq(S.root, d, S.temp, 4));
-  freqs.push(audio.degreeFreq(S.root, 0, S.temp, 5));
+  const freqs = scale.map(d => audio.degreeFreq(S.root, d, S.temp, S.octave));
+  freqs.push(audio.degreeFreq(S.root, 0, S.temp, S.octave + 1));
   return freqs;
 }
 
@@ -556,6 +589,16 @@ document.getElementById('btn-audio').addEventListener('click', function () {
     : '<span class="hdr-icon">🔇</span><span class="btn-text"> Muted</span>';
 });
 
+function updateOctaveLabel() {
+  document.getElementById('oct-lbl').textContent = 'Oct ' + S.octave;
+}
+document.getElementById('btn-oct-down').addEventListener('click', () => {
+  if (S.octave > 0) { S.octave--; updateOctaveLabel(); }
+});
+document.getElementById('btn-oct-up').addEventListener('click', () => {
+  if (S.octave < 6) { S.octave++; updateOctaveLabel(); }
+});
+
 document.getElementById('btn-guitar').addEventListener('click', function () {
   S.fretboardOpen = !S.fretboardOpen;
   const wrap = document.getElementById('fretboard-wrap');
@@ -574,6 +617,7 @@ document.getElementById('btn-seq-synth').addEventListener('click', function () {
 document.getElementById('sel-scale').addEventListener('change', function () {
   S.scaleName = this.value;
   updateInfo(); draw(); drawFretboard();
+  refreshNoteGrid('root-grid', 'root');
 });
 
 ['tog-cents', 'tog-labels'].forEach(id => {
@@ -1315,7 +1359,7 @@ document.getElementById('mix-drums').addEventListener('input', function () {
 document.getElementById('mix-reverb').addEventListener('input', function () {
   const v = parseInt(this.value);
   document.getElementById('mix-rev-val').textContent = v + '%';
-  withAudio(() => { if (audio.revSend) audio.revSend.gain.setTargetAtTime(v / 100 * 0.8, audio.actx.currentTime, 0.02); });
+  withAudio(() => { if (audio.revSend) audio.revSend.gain.setTargetAtTime(v / 100 * 1.28, audio.actx.currentTime, 0.02); });
 });
 document.getElementById('mix-dist').addEventListener('input', function () {
   const v = parseInt(this.value);
@@ -1728,6 +1772,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     S.scaleName = this.value;
     const mainSc = document.getElementById('sel-scale'); if (mainSc) mainSc.value = this.value;
     updateInfo(); draw();
+    refreshNoteGrid('root-grid', 'root');
   });
   document.getElementById('sel-scale').addEventListener('change', () => {
     const ms = document.getElementById('mob-scale-sel');
@@ -1840,7 +1885,10 @@ function syncHandleMessage(msg) {
       break;
     case 'PEER_JOINED':
       if (seqEngine.playing) {
-        Sync.send({ type: 'PLAY', epochMs, masterBpm, ...syncGetFullState() });
+        const loopDurMs = SEQ.loopLen * seqStepDur() * 1000;
+        const elapsed   = Sync.sharedNow() - epochMs;
+        const nextLoopEpochMs = epochMs + (Math.floor(elapsed / loopDurMs) + 1) * loopDurMs;
+        Sync.send({ type: 'PLAY', epochMs: nextLoopEpochMs, masterBpm, ...syncGetFullState() });
       } else {
         Sync.send({ type: 'FULL_STATE', playing: false, masterBpm, ...syncGetFullState() });
       }

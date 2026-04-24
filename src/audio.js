@@ -51,7 +51,7 @@ export class AudioEngine {
     this.delayWet = this.actx.createGain(); this.delayWet.gain.value = 0;
 
     this.reverb = this._makeReverb(2.2, 2.8);
-    this.revSend = this.actx.createGain(); this.revSend.gain.value = 0.10;
+    this.revSend = this.actx.createGain(); this.revSend.gain.value = 0.64;
 
     this.drumComp = this.actx.createDynamicsCompressor();
     this.drumComp.threshold.value = -12; this.drumComp.ratio.value = 4;

@@ -25,7 +25,7 @@ export const SYNTH = {
 
 // ── UI / music state
 export const S = {
-  root: 0, temp: 'equal', family: 'western', scaleName: 'Major (Ionian)',
+  root: 0, octave: 4, temp: 'equal', family: 'western', scaleName: 'Major (Ionian)',
   chordRoot: 0, chordName: '— None —',
   showCents: true, showLabels: true,
   tuning: 'Standard (EADGBE)',

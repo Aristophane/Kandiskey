@@ -58,7 +58,7 @@ export const seqEngine = {
     const scale = getScale();
     const n = scale.length;
     if (n === 0) return;
-    const rootHz  = 261.62556 * Math.pow(2, S.root / 12);
+    const rootHz  = 261.62556 * Math.pow(2, S.root / 12) * Math.pow(2, S.octave - 4);
     const noteDur = Math.max(seqStepDur() * SEQ.gate, 0.04);
 
     for (let si = 0; si < n; si++) {
@@ -68,7 +68,7 @@ export const seqEngine = {
         const cents = MAQAM_CENTS[S.scaleName][si] ?? 0;
         freq = rootHz * Math.pow(2, cents / 1200);
       } else {
-        freq = audio.degreeFreq(S.root, scale[si], S.temp, 4);
+        freq = audio.degreeFreq(S.root, scale[si], S.temp, S.octave);
       }
       audio._playHz(freq, Math.max(time - audio.actx.currentTime, 0), noteDur, 0.72);
     }
