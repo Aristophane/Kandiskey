@@ -13,12 +13,13 @@ import {
   DRUM_GRID, drumVelocity, setDrumVelocity, drumBuffers,
   activeBankKeys, activeBankLabels,
   activePads, setActivePad,
-  loadDrumSamples, reloadDrumBank, drawDrumMachine, loadWorldRhythm,
+  loadDrumSamples, reloadDrumBank, drawDrumMachine, scheduleDrmDraw, loadWorldRhythm,
+  invalidateBankKeys,
   setSyncSend as drumSetSyncSend, setSeqEngineRef as drumSetSeqEngineRef,
   WORLD_RHYTHMS_DRUM,
 } from './drum.js';
 import {
-  seqEngine, drawSequencer, getSeqActiveFreqs, seqLoadDemo,
+  seqEngine, drawSequencer, scheduleDrawSequencer, getSeqActiveFreqs, seqLoadDemo,
   setDrawCallback, setSyncSend as seqSetSyncSend,
   setSyncGetFullState, setSyncPlayUI, setStopMidiPlayer,
   setDrawFretboardCallback as seqSetDrawFretboard,
@@ -535,9 +536,9 @@ function resize() {
   draw();
   if (S.fretboardOpen) drawFretboard();
   drawTonnetz();
-  if (isMobileSlides()) { drawSequencer(); drawDrumMachine(); return; }
-  if (document.getElementById('seq-wrap').classList.contains('open')) drawSequencer();
-  if (document.getElementById('drum-wrap').classList.contains('open')) drawDrumMachine();
+  if (isMobileSlides()) { scheduleDrawSequencer(); scheduleDrmDraw(); return; }
+  if (document.getElementById('seq-wrap').classList.contains('open')) scheduleDrawSequencer();
+  if (document.getElementById('drum-wrap').classList.contains('open')) scheduleDrmDraw();
 }
 
 const ro = new ResizeObserver(() => resize());
@@ -831,7 +832,7 @@ document.getElementById('btn-seq').addEventListener('click', function () {
   const wrap = document.getElementById('seq-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-seq', open);
-  if (open) drawSequencer();
+  if (open) scheduleDrawSequencer();
 });
 
 (function () {
@@ -851,7 +852,7 @@ document.getElementById('btn-seq').addEventListener('click', function () {
     document.getElementById('seq-loop-val').textContent = newSteps;
     if (seqEngine.playing) seqEngine.rebase();
     else Sync.send({ type: 'SEQ_PARAM', rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
-    drawSequencer();
+    scheduleDrawSequencer();
   });
 })();
 
@@ -860,14 +861,14 @@ document.getElementById('seq-loop-len').addEventListener('input', function () {
   document.getElementById('seq-loop-val').textContent = SEQ.loopLen;
   if (seqEngine.playing) seqEngine.rebase();
   else Sync.send({ type: 'SEQ_PARAM', loopLen: SEQ.loopLen });
-  drawSequencer();
+  scheduleDrawSequencer();
 });
 
 document.getElementById('drum-loop-len').addEventListener('input', function () {
   setDrumLoopLen(parseInt(this.value));
   document.getElementById('drum-loop-val').textContent = drumLoopLen;
   Sync.send({ type: 'SEQ_PARAM', drumLoopLen });
-  drawDrumMachine();
+  scheduleDrmDraw();
 });
 
 // ── BPM CYLINDER PICKER ─────────────────────────────────────────────
@@ -948,7 +949,7 @@ document.getElementById('seq-gate').addEventListener('input', function () {
 });
 
 document.getElementById('btn-seq-demo').addEventListener('click', () => seqLoadDemo());
-document.getElementById('btn-seq-clear').addEventListener('click', () => { SEQ.grid = {}; drawSequencer(); });
+document.getElementById('btn-seq-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
 document.getElementById('btn-seq-play').addEventListener('click', () => {
   if (tunerState.active) {
     stopTuner();
@@ -1082,11 +1083,11 @@ wireMidiControls();
 // ── DRUM MACHINE WIRING ───────────────────────────────────────────────
 
 document.getElementById('btn-drums').addEventListener('click', function () {
-  if (isMobileSlides()) { scrollToSlide(2); loadDrumSamples(() => drawDrumMachine()); return; }
+  if (isMobileSlides()) { scrollToSlide(2); loadDrumSamples(() => scheduleDrmDraw()); return; }
   const wrap = document.getElementById('drum-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-drums', open);
-  if (open) { loadDrumSamples(() => drawDrumMachine()); drawDrumMachine(); }
+  if (open) { loadDrumSamples(() => scheduleDrmDraw()); scheduleDrmDraw(); }
 });
 
 // ── SOLO PANEL ────────────────────────────────────────────────────────
@@ -1168,7 +1169,8 @@ document.getElementById('solo-oct-up').addEventListener('click', () => { setSolo
   });
   bankSel.addEventListener('change', function () {
     reloadDrumBank(this.value, () => {
-      drawDrumMachine();
+      invalidateBankKeys();
+      scheduleDrmDraw();
       const cfg = document.getElementById('drum-pad-config');
       if (cfg && cfg.style.display !== 'none') renderDrumPadConfig();
     });
@@ -1231,7 +1233,8 @@ function renderDrumPadConfig() {
     });
     sel.addEventListener('change', function () {
       setActivePad(i, this.value);
-      loadDrumSamples(() => drawDrumMachine());
+      invalidateBankKeys();
+      loadDrumSamples(() => scheduleDrmDraw());
     });
     wrap.appendChild(lbl);
     wrap.appendChild(sel);
@@ -1244,7 +1247,7 @@ document.getElementById('btn-drum-clear').addEventListener('click', () => {
     for (let st = 0; st < seqSteps(); st++) delete DRUM_GRID[key + '_' + st];
   });
   document.getElementById('drum-preset-sel').value = 'Clear';
-  drawDrumMachine();
+  scheduleDrmDraw();
 });
 
 // ── MIXER PANEL ───────────────────────────────────────────────────────
@@ -1648,7 +1651,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     }
   });
 
-  loadDrumSamples(() => drawDrumMachine());
+  loadDrumSamples(() => scheduleDrmDraw());
 
   const outer = document.getElementById('outer-wrap');
   const dots = document.querySelectorAll('.slide-dot');
@@ -1671,7 +1674,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 
   setTimeout(() => {
     SLIDE_ELS().forEach(el => { if (el) obs.observe(el); });
-    drawSequencer(); drawDrumMachine(); resize();
+    scheduleDrawSequencer(); scheduleDrmDraw(); resize();
   }, 80);
 
   const mobTempSel = document.getElementById('mob-temp-sel');
@@ -1799,7 +1802,7 @@ function syncHandleMessage(msg) {
       } else {
         seqEngine.play(msg.epochMs);
       }
-      drawSequencer(); drawDrumMachine();
+      scheduleDrawSequencer(); scheduleDrmDraw();
       break;
     case 'JOINED':
       setPeerEpochMs(msg.epochMs);
@@ -1815,15 +1818,15 @@ function syncHandleMessage(msg) {
       if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
       syncUpdateUI(msg);
       if (seqEngine.playing) { setEpochMs(msg.epochMs); seqEngine.rebase(true); }
-      drawSequencer();
+      scheduleDrawSequencer();
       break;
     case 'GRID_SET':
       if (msg.val) SEQ.grid[msg.key] = true; else delete SEQ.grid[msg.key];
-      drawSequencer();
+      scheduleDrawSequencer();
       break;
     case 'DRUM_SET':
       if (msg.val) DRUM_GRID[msg.key] = true; else delete DRUM_GRID[msg.key];
-      drawDrumMachine();
+      scheduleDrmDraw();
       break;
     case 'SEQ_PARAM':
       if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
@@ -1833,7 +1836,7 @@ function syncHandleMessage(msg) {
       if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
       syncUpdateUI(msg);
       if (seqEngine.playing) seqEngine.rebase(true);
-      drawSequencer(); drawDrumMachine();
+      scheduleDrawSequencer(); scheduleDrmDraw();
       break;
     case 'PEER_JOINED':
       if (seqEngine.playing) {
@@ -1844,7 +1847,7 @@ function syncHandleMessage(msg) {
       break;
     case 'FULL_STATE':
       syncApplyFullState(msg);
-      drawSequencer(); drawDrumMachine();
+      scheduleDrawSequencer(); scheduleDrmDraw();
       break;
   }
 }

@@ -628,20 +628,33 @@ export function reloadDrumBank(bankName, onDone) {
 }
 
 
+// Cached bank keys for the hot audio path — invalidated whenever the active
+// bank or pad layout changes. Avoids repeated function calls inside _tick().
+let _bankKeysCache  = null;
+let _bankKeysDirty  = true;
+export function invalidateBankKeys() { _bankKeysDirty = true; }
+function _getBankKeys() {
+  if (_bankKeysDirty) { _bankKeysCache = activeBankKeys(); _bankKeysDirty = false; }
+  return _bankKeysCache;
+}
+
 export function drumPlayStep(step, time) {
   if (!drumsReady || !audio.enabled) return;
-  activeBankKeys().forEach(key => {
-    if (!DRUM_GRID[key + '_' + step]) return;
+  const keys    = _getBankKeys();
+  const actxNow = audio.actx.currentTime;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (!DRUM_GRID[key + '_' + step]) continue;
     const ab = drumBuffers[key];
-    if (!ab) return;
+    if (!ab) continue;
     const src = audio.actx.createBufferSource();
     src.buffer = ab;
     const g = audio.actx.createGain();
     g.gain.value = drumVelocity;
     src.connect(g);
     g.connect(audio.drumBus);
-    src.start(Math.max(time, audio.actx.currentTime + 0.001));
-  });
+    src.start(Math.max(time, actxNow + 0.001));
+  }
 }
 
 
@@ -649,14 +662,27 @@ export function drumPlayStep(step, time) {
 const drumCanvas = document.getElementById('drum-canvas');
 const drumCtx = drumCanvas.getContext('2d');
 
+let _drmCacheW = 0, _drmCacheH = 0, _drmCacheDpr = 0;
+new ResizeObserver(() => { _drmCacheW = 0; }).observe(drumCanvas.parentElement);
+
+let _drmDrawPending = false;
+export function scheduleDrmDraw() {
+  if (_drmDrawPending) return;
+  _drmDrawPending = true;
+  requestAnimationFrame(() => { _drmDrawPending = false; drawDrumMachine(); });
+}
+
 export function drawDrumMachine() {
   const wrap = drumCanvas.parentElement;
   const DPR = window.devicePixelRatio || 1;
   const W = wrap.clientWidth, H = wrap.clientHeight;
   if (W === 0 || H === 0) return;
-  drumCanvas.width  = W * DPR; drumCanvas.height = H * DPR;
-  drumCanvas.style.width = W + 'px'; drumCanvas.style.height = H + 'px';
-  drumCtx.scale(DPR, DPR);
+  if (W !== _drmCacheW || H !== _drmCacheH || DPR !== _drmCacheDpr) {
+    _drmCacheW = W; _drmCacheH = H; _drmCacheDpr = DPR;
+    drumCanvas.width  = W * DPR; drumCanvas.height = H * DPR;
+    drumCanvas.style.width = W + 'px'; drumCanvas.style.height = H + 'px';
+  }
+  drumCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   const bankKeys   = activeBankKeys();
   const bankLabels = activeBankLabels();
@@ -751,7 +777,7 @@ drumCanvas.addEventListener('click', e => {
   const key = bKeys[row] + '_' + st;
   if (DRUM_GRID[key]) { delete DRUM_GRID[key]; _syncSend({ type: 'DRUM_SET', key, val: false }); }
   else                { DRUM_GRID[key] = true;  _syncSend({ type: 'DRUM_SET', key, val: true  }); }
-  drawDrumMachine();
+  scheduleDrmDraw();
 });
 
 
@@ -769,7 +795,7 @@ export function loadWorldRhythm(name) {
     if (sl) { sl.max = steps; sl.value = steps; }
     const lv = document.getElementById('drum-loop-val');
     if (lv) lv.textContent = steps;
-    drawDrumMachine(); return;
+    scheduleDrmDraw(); return;
   }
   Object.keys(pat).forEach(key => {
     const hits = pat[key];
@@ -784,6 +810,6 @@ export function loadWorldRhythm(name) {
   if (sl) { sl.max = steps; sl.value = steps; }
   const lv = document.getElementById('drum-loop-val');
   if (lv) lv.textContent = steps;
-  drawDrumMachine();
+  scheduleDrmDraw();
 }
 

@@ -9,7 +9,7 @@ import {
   setEpochMs, setPeerEpochMs, setMasterBpm,
 } from './state.js';
 import { CHROMATIC, MAQAM_CENTS } from './data.js';
-import { drumPlayStep, drawDrumMachine } from './drum.js';
+import { drumPlayStep, drawDrumMachine, scheduleDrmDraw } from './drum.js';
 import { sharedNow } from './sync.js';
 
 // ── Injected callbacks ──────────────────────────────────────────────
@@ -179,8 +179,8 @@ export const seqEngine = {
     clearInterval(this._ivl);
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     _syncPlayUI('paused');
-    drawSequencer();
-    drawDrumMachine();
+    scheduleDrawSequencer();
+    scheduleDrmDraw();
   },
 
   stop(fromRemote = false) {
@@ -197,8 +197,8 @@ export const seqEngine = {
     setPeerEpochMs(null);
     if (!fromRemote) _syncSend({ type: 'STOP' });
     _syncPlayUI('stopped');
-    drawSequencer();
-    drawDrumMachine();
+    scheduleDrawSequencer();
+    scheduleDrmDraw();
   },
 
   rebase(fromRemote = false) {
@@ -217,14 +217,32 @@ export const seqEngine = {
 
 let _seqFbLastStep = -1;
 
+// Cached canvas dimensions — only reassign canvas.width/height on actual resize.
+// Reassigning canvas.width resets all canvas state (transform, styles) and forces
+// a full GPU texture realloc, which is expensive and unnecessary every frame.
+let _seqCacheW = 0, _seqCacheH = 0, _seqCacheDpr = 0;
+new ResizeObserver(() => { _seqCacheW = 0; }).observe(seqCanvas.parentElement);
+
+// Deferred draw: coalesces multiple synchronous calls (e.g. from click handlers)
+// into a single RAF callback so _tick() is never blocked by a redraw.
+let _seqDrawPending = false;
+export function scheduleDrawSequencer() {
+  if (_seqDrawPending) return;
+  _seqDrawPending = true;
+  requestAnimationFrame(() => { _seqDrawPending = false; drawSequencer(); });
+}
+
 export function drawSequencer() {
   const wrap = seqCanvas.parentElement;
   const DPR  = window.devicePixelRatio || 1;
   const W    = wrap.clientWidth, H = wrap.clientHeight;
   if (W === 0 || H === 0) return;
-  seqCanvas.width  = W * DPR; seqCanvas.height = H * DPR;
-  seqCanvas.style.width = W + 'px'; seqCanvas.style.height = H + 'px';
-  seqCtx.scale(DPR, DPR);
+  if (W !== _seqCacheW || H !== _seqCacheH || DPR !== _seqCacheDpr) {
+    _seqCacheW = W; _seqCacheH = H; _seqCacheDpr = DPR;
+    seqCanvas.width  = W * DPR; seqCanvas.height = H * DPR;
+    seqCanvas.style.width = W + 'px'; seqCanvas.style.height = H + 'px';
+  }
+  seqCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   const scale = getScale();
   const n     = scale.length;
@@ -327,7 +345,7 @@ seqCanvas.addEventListener('click', e => {
   const key = `${si}_${st}`;
   if (SEQ.grid[key]) { delete SEQ.grid[key]; _syncSend({ type: 'GRID_SET', key, val: false }); }
   else               { SEQ.grid[key] = true;  _syncSend({ type: 'GRID_SET', key, val: true  }); }
-  drawSequencer();
+  scheduleDrawSequencer(); // deferred — never blocks _tick()
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────
