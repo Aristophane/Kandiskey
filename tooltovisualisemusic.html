@@ -13,12 +13,12 @@
     <h1>Kandiskey</h1>
     <!-- Transport -->
     <div class="hdr-transport">
-      <button class="hdr-play-btn" id="btn-seq-play" title="Play (Space)"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg><span class="btn-text"> Play</span></button>
-      <button class="hdr-pause-btn" id="btn-seq-pause" title="Pause (Space)" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg><span class="btn-text"> Pause</span></button>
-      <button class="hdr-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg><span class="btn-text"> Stop</span></button>
+      <button class="hdr-play-btn" id="btn-seq-play" title="Play (Space)"><svg class="hdr-icon" viewBox="0 0 20 20"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg><span class="btn-text"> Play</span></button>
+      <button class="hdr-pause-btn" id="btn-seq-pause" title="Pause (Space)" style="display:none"><svg class="hdr-icon" viewBox="0 0 20 20"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg><span class="btn-text"> Pause</span></button>
+      <button class="hdr-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg><span class="btn-text"> Stop</span></button>
       <div class="hdr-bpm">
-        <input type="range" class="seq-sl" id="seq-bpm" min="40" max="240" step="1" value="120" style="width:64px">
-        <span class="seq-val" id="seq-bpm-val">120</span>
+        <input type="range" id="seq-bpm" min="40" max="240" step="1" value="120" style="display:none">
+        <button class="bpm-display-btn" id="bpm-display-btn" title="Set tempo"><span id="seq-bpm-val">120</span><span class="bpm-unit"> BPM</span></button>
         <button class="tap-btn" id="btn-tap-tempo" title="Tap to set tempo">TAP</button>
       </div>
     </div>
@@ -140,6 +140,11 @@
       <div class="chord-grid" id="chord-type-grid"></div>
     </div>
 
+    <div class="control-group">
+      <span class="control-label">Tonnetz</span>
+      <canvas id="tonnetz-canvas" height="160"></canvas>
+    </div>
+
     <div style="margin-top:6px; border-top:1px solid var(--border); padding-top:12px;">
       <div class="section-title">Scale Notes</div>
       <div class="chips" id="scale-chips"></div>
@@ -171,11 +176,11 @@
       <button class="midi-btn" id="btn-seq-clear" title="Clear grid">✕ Clear</button>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Source</span>
-      <button class="midi-btn seq-src-btn active" id="seq-src-synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth</button>
+      <button class="midi-btn seq-src-btn active" id="seq-src-synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Sound</button>
       <button class="midi-btn seq-src-btn" id="seq-src-wave"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-vibrato-rate"></use></svg> Wave</button>
       <button class="midi-btn seq-src-btn" id="seq-src-sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-attack"></use></svg> Sample</button>
       <div class="seq-sep"></div>
-      <button class="midi-btn" id="btn-seq-synth" title="Synth controls"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth ▾</button>
+      <button class="midi-btn" id="btn-seq-synth" title="Sound controls"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Sound ▾</button>
     </div>
     <!-- Wave draw bar -->
     <div id="seq-wave-bar" class="seq-extra-bar" style="display:none">
@@ -248,7 +253,7 @@
       <span class="seq-val" id="solo-oct-val">4</span>
       <button class="midi-btn" id="solo-oct-up">+</button>
       <div class="seq-sep"></div>
-      <button class="midi-btn" id="btn-solo-synth">🔊 Synth</button>
+      <button class="midi-btn" id="btn-solo-synth">🔊 Sound</button>
     </div>
     <div id="solo-pads"></div>
   </div>
@@ -486,15 +491,26 @@
 
 <!-- ── Mobile compact scale strip (canvas + seq slides; hidden on drums) ── -->
 <div id="mobile-scale-strip">
-  <button class="mob-play-btn" id="mob-btn-play" title="Play"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-play"></use></svg></button>
-  <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg></button>
-  <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none"><svg class="hdr-icon"><use href="simple-white-icons.svg#icon-stop"></use></svg></button>
+  <button class="mob-play-btn" id="mob-btn-play" title="Play"><svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg></button>
+  <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg></button>
+  <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg></button>
   <button class="mob-root-btn" id="mob-root-prev" title="Previous root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-prev"></use></svg></button>
   <span class="mob-root-lbl" id="mob-root-lbl">C</span>
   <button class="mob-root-btn" id="mob-root-next" title="Next root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-next"></use></svg></button>
   <select id="mob-temp-sel" class="mob-sel"></select>
   <select id="mob-family-sel" class="mob-sel"></select>
   <select id="mob-scale-sel" class="mob-sel" style="flex:1"></select>
+</div>
+
+<!-- BPM Cylinder Picker -->
+<div id="bpm-picker-overlay" style="display:none">
+  <div class="bpm-backdrop"></div>
+  <div class="bpm-picker-pop">
+    <div class="bpm-picker-fade top"></div>
+    <div class="bpm-picker-scroll" id="bpm-picker-scroll"></div>
+    <div class="bpm-picker-fade bot"></div>
+    <div class="bpm-picker-indicator"></div>
+  </div>
 </div>
 
 <script>window.DRUM_SOUND_BANK_BASE_URL = '%BASE_URL%drumSoundBankChunks/';</script>

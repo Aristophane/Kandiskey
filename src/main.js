@@ -294,6 +294,116 @@ function updateInfo() {
     tbody.appendChild(row);
   });
   renderSoloPads();
+  drawTonnetz();
+}
+
+// ── TONNETZ VISUALIZATION ────────────────────────────────────────────
+
+function _findLatticeCoords(pitch) {
+  let best = [0, 0], bestDist = Infinity;
+  for (let a = -6; a <= 6; a++) {
+    for (let b = -6; b <= 6; b++) {
+      if (((a * 7 + b * 4) % 12 + 12) % 12 === pitch) {
+        const d = Math.abs(a) + Math.abs(b);
+        if (d < bestDist) { bestDist = d; best = [a, b]; }
+      }
+    }
+  }
+  return best;
+}
+
+function drawTonnetz() {
+  const cvs = document.getElementById('tonnetz-canvas');
+  if (!cvs) return;
+  const W = cvs.offsetWidth || 260;
+  const H = 160;
+  if (cvs.width !== W) cvs.width = W;
+
+  const ctx2 = cvs.getContext('2d');
+  ctx2.clearRect(0, 0, W, H);
+
+  const scaleNotes = getScaleNotes();
+  const chordIntervals = CHORDS[S.chordName];
+  const chordNotes = chordIntervals ? chordIntervals.map(i => (S.chordRoot + i) % 12) : [];
+
+  const sx = W / 8;
+  const sy = H / 4.5;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // Build lattice nodes
+  const nodes = [];
+  for (let a = -4; a <= 4; a++) {
+    for (let b = -2; b <= 2; b++) {
+      const pitch = ((a * 7 + b * 4) % 12 + 12) % 12;
+      const x = cx + a * sx + b * sx * 0.5;
+      const y = cy - b * sy;
+      nodes.push({ a, b, pitch, x, y });
+    }
+  }
+
+  const findNode = (a, b) => nodes.find(n => n.a === a && n.b === b);
+
+  // Draw edges
+  ctx2.save();
+  ctx2.lineWidth = 0.8;
+  nodes.forEach(n => {
+    [
+      findNode(n.a + 1, n.b),
+      findNode(n.a, n.b + 1),
+      findNode(n.a + 1, n.b - 1),
+    ].forEach(m => {
+      if (!m) return;
+      const bothScale = scaleNotes.includes(n.pitch) && scaleNotes.includes(m.pitch);
+      ctx2.strokeStyle = bothScale ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.06)';
+      ctx2.beginPath(); ctx2.moveTo(n.x, n.y); ctx2.lineTo(m.x, m.y); ctx2.stroke();
+    });
+  });
+  ctx2.restore();
+
+  // Draw chord triangle for Major / Minor chords with a fifth
+  if (chordIntervals && chordIntervals.includes(7)) {
+    const [a0, b0] = _findLatticeCoords(S.chordRoot);
+    const isMinor = chordIntervals[1] === 3;
+    const triNodes = isMinor
+      ? [findNode(a0, b0), findNode(a0 + 1, b0 - 1), findNode(a0 + 1, b0)]
+      : [findNode(a0, b0), findNode(a0, b0 + 1), findNode(a0 + 1, b0)];
+    if (triNodes.every(Boolean)) {
+      ctx2.save();
+      ctx2.beginPath();
+      ctx2.moveTo(triNodes[0].x, triNodes[0].y);
+      ctx2.lineTo(triNodes[1].x, triNodes[1].y);
+      ctx2.lineTo(triNodes[2].x, triNodes[2].y);
+      ctx2.closePath();
+      ctx2.fillStyle = isMinor ? 'rgba(96,165,250,0.15)' : 'rgba(52,211,153,0.15)';
+      ctx2.fill();
+      ctx2.strokeStyle = isMinor ? 'rgba(96,165,250,0.6)' : 'rgba(52,211,153,0.6)';
+      ctx2.lineWidth = 1.5;
+      ctx2.stroke();
+      ctx2.restore();
+    }
+  }
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const isScale = scaleNotes.includes(n.pitch);
+    const isChord = chordNotes.includes(n.pitch);
+    const isRoot  = isChord && n.pitch === S.chordRoot;
+    const r = isRoot ? 9 : isChord ? 8 : isScale ? 5.5 : 3.5;
+
+    ctx2.beginPath(); ctx2.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx2.fillStyle = isRoot ? '#ef4444' : isChord ? '#60a5fa' : isScale ? 'rgba(167,139,250,0.6)' : 'rgba(255,255,255,0.07)';
+    ctx2.fill();
+
+    if (isScale || isChord) {
+      ctx2.strokeStyle = isRoot ? '#fca5a5' : isChord ? '#93c5fd' : 'rgba(167,139,250,0.45)';
+      ctx2.lineWidth = 1; ctx2.stroke();
+      ctx2.fillStyle = '#fff';
+      ctx2.font = `${isChord ? '600 ' : ''}${Math.max(7, Math.round(r * 1.3))}px sans-serif`;
+      ctx2.textAlign = 'center'; ctx2.textBaseline = 'middle';
+      ctx2.fillText(CHROMATIC[n.pitch], n.x, n.y);
+    }
+  });
 }
 
 // ── RESIZE ──────────────────────────────────────────────────────────
@@ -307,6 +417,7 @@ function resize() {
   canvas.height = size;
   draw();
   if (S.fretboardOpen) drawFretboard();
+  drawTonnetz();
   if (isMobileSlides()) { drawSequencer(); drawDrumMachine(); return; }
   if (document.getElementById('seq-wrap').classList.contains('open')) drawSequencer();
   if (document.getElementById('drum-wrap').classList.contains('open')) drawDrumMachine();
@@ -337,7 +448,7 @@ document.getElementById('btn-seq-synth').addEventListener('click', function () {
   const wrap = document.getElementById('synth-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-synth', open);
-  this.innerHTML = `<svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Synth ${open ? '▴' : '▾'}`;
+  this.innerHTML = `<svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Sound ${open ? '▴' : '▾'}`;
 });
 
 document.getElementById('sel-scale').addEventListener('change', function () {
@@ -639,6 +750,66 @@ document.getElementById('drum-loop-len').addEventListener('input', function () {
   Sync.send({ type: 'SEQ_PARAM', drumLoopLen });
   drawDrumMachine();
 });
+
+// ── BPM CYLINDER PICKER ─────────────────────────────────────────────
+(function () {
+  const overlay  = document.getElementById('bpm-picker-overlay');
+  const scroll   = document.getElementById('bpm-picker-scroll');
+  const dispBtn  = document.getElementById('bpm-display-btn');
+  const hidden   = document.getElementById('seq-bpm');
+  const valSpan  = document.getElementById('seq-bpm-val');
+  if (!overlay || !scroll || !dispBtn) return;
+
+  const MIN = 40, MAX = 240, ITEM_H = 48;
+
+  for (let bpm = MIN; bpm <= MAX; bpm++) {
+    const item = document.createElement('div');
+    item.className = 'bpm-picker-item';
+    item.textContent = bpm;
+    scroll.appendChild(item);
+  }
+
+  function applyBpm(bpm) {
+    bpm = Math.max(MIN, Math.min(MAX, bpm));
+    SEQ.bpm = bpm;
+    setMasterBpm(Math.round(bpm / syncTempoRatio));
+    if (hidden) hidden.value = bpm;
+    if (valSpan) valSpan.textContent = bpm;
+    if (seqEngine.playing) seqEngine.rebase();
+    else Sync.send({ type: 'SEQ_PARAM', masterBpm });
+  }
+
+  function currentIdx() { return Math.round(scroll.scrollTop / ITEM_H); }
+
+  function updateSelection() {
+    const idx = currentIdx();
+    scroll.querySelectorAll('.bpm-picker-item').forEach((item, i) => {
+      item.classList.toggle('selected', i === idx);
+    });
+  }
+
+  function openPicker() {
+    overlay.style.display = 'flex';
+    const cur = SEQ.bpm || 120;
+    // Small delay so the element is painted before we scroll
+    requestAnimationFrame(() => {
+      scroll.scrollTop = (cur - MIN) * ITEM_H;
+      updateSelection();
+    });
+  }
+
+  function closePicker() {
+    const bpm = currentIdx() + MIN;
+    overlay.style.display = 'none';
+    applyBpm(bpm);
+  }
+
+  dispBtn.addEventListener('click', openPicker);
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay || e.target.classList.contains('bpm-backdrop')) closePicker();
+  });
+  scroll.addEventListener('scroll', updateSelection);
+})();
 
 document.getElementById('seq-bpm').addEventListener('input', function () {
   document.getElementById('seq-bpm-val').textContent = this.value;
@@ -989,6 +1160,7 @@ document.getElementById('btn-tuner').addEventListener('click', async function ()
     S.fretboardOpen = false;
 
     if (seqEngine.playing) { seqEngine.pause(); _tunerPausedSeq = true; }
+    if (isMobileSlides()) scrollToSlide(0);
 
     try {
       await startTuner(draw);
@@ -1288,6 +1460,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 (function initMobileSlides() {
   if (!isMobileSlides()) return;
 
+  document.body.classList.add('on-viz-slide'); // slide 0 active on load
+
   const strip = document.getElementById('mobile-scale-strip');
   ['mixer-wrap', 'synth-wrap', 'solo-synth-wrap', 'fretboard-wrap'].forEach(id => {
     const el = document.getElementById(id);
@@ -1310,8 +1484,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 
   [
     { wrapId: 'mixer-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-mixer"></use></svg>Mixer', color: '#60a5fa' },
-    { wrapId: 'synth-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-synth"></use></svg>Synth', color: '#f59e0b' },
-    { wrapId: 'solo-synth-wrap', label: '🔊 Solo Synth', color: '#c4b5fd' },
+    { wrapId: 'synth-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-synth"></use></svg>Sound', color: '#f59e0b' },
+    { wrapId: 'solo-synth-wrap', label: '🔊 Solo Sound', color: '#c4b5fd' },
   ].forEach(({ wrapId, label, color }) => {
     const panel = document.querySelector(`#${wrapId} .synth-panel`); if (!panel) return;
     const handle = document.createElement('div'); handle.className = 'mob-panel-handle';
@@ -1322,8 +1496,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     document.getElementById(wrapId).addEventListener('click', e => { if (e.target === document.getElementById(wrapId)) closePanelOverlay(wrapId); });
   });
 
-  const fabMixer = document.createElement('button'); fabMixer.id = 'mob-fab-mixer'; fabMixer.className = 'mob-fab'; fabMixer.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-mixer"></use></svg>'; fabMixer.setAttribute('aria-label', 'Mixer');
-  const fabSynth = document.createElement('button'); fabSynth.id = 'mob-fab-synth'; fabSynth.className = 'mob-fab'; fabSynth.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-synth"></use></svg>'; fabSynth.setAttribute('aria-label', 'Synth');
+  const fabMixer = document.createElement('button'); fabMixer.id = 'mob-fab-mixer'; fabMixer.className = 'mob-fab'; fabMixer.innerHTML = '<svg viewBox="0 0 20 20" width="22" height="22" fill="currentColor"><rect x="3" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="9" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="15" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="1" y="8" width="6" height="3" rx="1.5"/><rect x="7" y="5" width="6" height="3" rx="1.5"/><rect x="13" y="11" width="6" height="3" rx="1.5"/></svg>'; fabMixer.setAttribute('aria-label', 'Mixer');
+  const fabSynth = document.createElement('button'); fabSynth.id = 'mob-fab-synth'; fabSynth.className = 'mob-fab'; fabSynth.innerHTML = '<svg class="hdr-icon" style="width:1.25em;height:1.25em"><use href="simple-white-icons.svg#icon-synth"></use></svg>'; fabSynth.setAttribute('aria-label', 'Sound');
   document.body.appendChild(fabMixer); document.body.appendChild(fabSynth);
   fabMixer.addEventListener('click', () => { const isOpen = document.getElementById('mixer-wrap').classList.contains('open'); isOpen ? closePanelOverlay('mixer-wrap') : openPanelOverlay('mixer-wrap'); });
   fabSynth.addEventListener('click', () => { const isOpen = document.getElementById('synth-wrap').classList.contains('open'); isOpen ? closePanelOverlay('synth-wrap') : openPanelOverlay('synth-wrap'); });
@@ -1340,6 +1514,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
       document.getElementById('btn-seq').classList.toggle('active-seq', idx === 1);
       document.getElementById('btn-drums').classList.toggle('active-drums', idx === 2);
       document.getElementById('btn-solo').classList.toggle('active-solo', idx === 3);
+      document.body.classList.toggle('on-viz-slide', idx === 0);
       const showStrip = idx !== 2;
       if (strip) strip.style.display = showStrip ? 'flex' : 'none';
       document.body.style.setProperty('--strip-h', showStrip ? '52px' : '0px');
