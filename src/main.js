@@ -94,14 +94,28 @@ function applyPeerBpm(bpm) {
 // ── syncPlayUI (full version, overrides sequencer's stub) ───────────
 
 function syncPlayUI(state) {
-  ['btn-seq-play', 'mob-btn-play'].forEach(id => {
+  ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? 'none' : '';
   });
-  ['btn-seq-pause', 'mob-btn-pause'].forEach(id => {
+  ['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? '' : 'none';
   });
-  ['btn-seq-stop', 'mob-btn-stop'].forEach(id => {
+  ['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state !== 'stopped' ? '' : 'none';
+  });
+}
+
+function syncVizBpmUi() {
+  const bpmText = String(document.getElementById('seq-bpm-val')?.textContent || SEQ.bpm || 120).trim();
+  ['viz-bpm-val', 'seq-panel-bpm-val', 'drum-panel-bpm-val'].forEach(id => {
+    const valueEl = document.getElementById(id);
+    if (valueEl) valueEl.textContent = bpmText;
+  });
+  ['btn-viz-bpm', 'btn-seq-panel-bpm', 'btn-drum-panel-bpm'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.title = `Set tempo (${bpmText} BPM)`;
+    btn.setAttribute('aria-label', `Set tempo ${bpmText} BPM`);
   });
 }
 
@@ -689,7 +703,7 @@ function drawTonnetz() {
 
 function resize() {
   const w = vizPanel.clientWidth || window.innerWidth;
-  const stripH = isMobileSlides() ? 52 : 0;
+  const stripH = parseFloat(getComputedStyle(document.body).getPropertyValue('--strip-h')) || 0;
   const h = vizPanel.clientHeight || (window.innerHeight - 80 - stripH);
   const size = Math.max(60, Math.min(w - 40, h - 40, 640));
   canvas.width = size;
@@ -718,8 +732,9 @@ function syncAudioUi() {
       : '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-muted"></use></svg><span class="btn-text"> Muted</span>';
   }
 
-  const vizBtn = document.getElementById('btn-viz-mute');
-  if (vizBtn) {
+  ['btn-viz-mute', 'btn-seq-panel-mute', 'btn-drum-panel-mute'].forEach(id => {
+    const vizBtn = document.getElementById(id);
+    if (!vizBtn) return;
     vizBtn.classList.toggle('active-audio', audio.enabled);
     vizBtn.classList.toggle('muted', !audio.enabled);
     vizBtn.title = audio.enabled ? 'Mute audio' : 'Unmute audio';
@@ -727,7 +742,7 @@ function syncAudioUi() {
     vizBtn.innerHTML = audio.enabled
       ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>'
       : '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-muted"></use></svg>';
-  }
+  });
 }
 
 function setAudioEnabled(enabled) {
@@ -742,14 +757,47 @@ function toggleAudioEnabled() {
 function syncMixerUi(open) {
   document.getElementById('btn-mixer')?.classList.toggle('active-mixer', open);
   document.getElementById('btn-viz-mixer')?.classList.toggle('active-mixer', open);
+  document.getElementById('btn-seq-panel-mixer')?.classList.toggle('active-mixer', open);
+  document.getElementById('btn-drum-panel-mixer')?.classList.toggle('active-mixer', open);
+}
+
+function triggerSequencerPlay() {
+  if (tunerState.active) {
+    stopTuner();
+    document.getElementById('btn-tuner').classList.remove('active-tuner');
+    _tunerPausedSeq = false;
+  }
+  seqEngine.play();
 }
 
 document.getElementById('btn-audio')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-viz-mute')?.addEventListener('click', () => toggleAudioEnabled());
+document.getElementById('btn-seq-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
+document.getElementById('btn-drum-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-viz-mixer')?.addEventListener('click', () => {
   document.getElementById('btn-mixer')?.click();
 });
+document.getElementById('btn-seq-panel-mixer')?.addEventListener('click', () => {
+  document.getElementById('btn-mixer')?.click();
+});
+document.getElementById('btn-drum-panel-mixer')?.addEventListener('click', () => {
+  document.getElementById('btn-mixer')?.click();
+});
+document.getElementById('btn-viz-bpm')?.addEventListener('click', () => {
+  document.getElementById('bpm-display-btn')?.click();
+});
+document.getElementById('btn-seq-panel-bpm')?.addEventListener('click', () => {
+  document.getElementById('bpm-display-btn')?.click();
+});
+document.getElementById('btn-drum-panel-bpm')?.addEventListener('click', () => {
+  document.getElementById('bpm-display-btn')?.click();
+});
+const seqBpmValEl = document.getElementById('seq-bpm-val');
+if (seqBpmValEl) {
+  new MutationObserver(() => syncVizBpmUi()).observe(seqBpmValEl, { childList: true, characterData: true, subtree: true });
+}
 syncAudioUi();
+syncVizBpmUi();
 
 function updateOctaveLabel() {
   document.getElementById('oct-lbl').textContent = 'Oct ' + S.octave;
@@ -1315,17 +1363,15 @@ document.getElementById('seq-gate').addEventListener('input', function () {
 
 document.getElementById('btn-seq-demo').addEventListener('click', () => seqLoadDemo());
 document.getElementById('btn-seq-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
-document.getElementById('btn-seq-play').addEventListener('click', () => {
-  if (tunerState.active) {
-    stopTuner();
-    document.getElementById('btn-tuner').classList.remove('active-tuner');
-    _tunerPausedSeq = false;
-  }
-  seqEngine.play();
+['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', () => triggerSequencerPlay());
 });
-document.getElementById('btn-seq-pause').addEventListener('click', () => seqEngine.pause());
-document.getElementById('btn-seq-stop').addEventListener('click', () => seqEngine.stop());
-document.getElementById('mob-btn-pause').addEventListener('click', () => seqEngine.pause());
+['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', () => seqEngine.pause());
+});
+['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', () => seqEngine.stop());
+});
 
 // Tap tempo
 (function () {
@@ -1996,7 +2042,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     const el = document.getElementById(id);
     if (el && strip) document.body.insertBefore(el, strip);
   });
-  document.body.style.setProperty('--strip-h', '52px');
+  if (strip) strip.style.display = 'block';
+  document.body.style.setProperty('--strip-h', '0px');
 
   function closePanelOverlay(wrapId) {
     const wrap = document.getElementById(wrapId); if (!wrap) return;
@@ -2039,9 +2086,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
       document.getElementById('btn-drums').classList.toggle('active-drums', idx === 2);
       document.getElementById('btn-solo').classList.toggle('active-solo', idx === 3);
       document.body.classList.toggle('on-viz-slide', idx === 0);
-      const showStrip = idx !== 2;
-      if (strip) strip.style.display = showStrip ? 'flex' : 'none';
-      document.body.style.setProperty('--strip-h', showStrip ? '52px' : '0px');
+      if (strip) strip.style.display = 'block';
+      document.body.style.setProperty('--strip-h', '0px');
       if (idx === 0) setTimeout(resize, 60);
       if (idx === 3) setTimeout(drawTonnetz, 50);
     });
@@ -2090,8 +2136,6 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     if (ms && ms.value !== S.scaleName) ms.value = S.scaleName;
   });
 
-  document.getElementById('mob-btn-play').addEventListener('click', () => seqEngine.play());
-  document.getElementById('mob-btn-stop').addEventListener('click', () => seqEngine.stop());
 })();
 
 // ── CROSS-DEVICE SYNC ─────────────────────────────────────────────────

@@ -69,7 +69,8 @@ header p { display: none; }
 
 /* ── HEADER TRANSPORT ── */
 .hdr-transport {
-  display: flex; align-items: center; gap: 5px;
+  display: none;
+  align-items: center; gap: 5px;
   margin-right: 10px; flex-shrink: 0;
 }
 .hdr-play-btn, .hdr-pause-btn, .hdr-stop-btn {
@@ -666,6 +667,27 @@ header p { display: none; }
 /* ── SEQUENCER ── */
 #drum-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .seq-panel { height: 100%; display: flex; flex-direction: column; background: rgba(7,5,18,0.99); }
+.panel-subheader {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(18,14,34,0.96), rgba(11,8,24,0.96));
+}
+.panel-subheader-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-subheader-right {
+  margin-left: auto;
+}
+.panel-round-btn {
+  width: 42px;
+  height: 42px;
+}
 .seq-header {
   flex-shrink: 0;
   display: flex; align-items: center; gap: 7px;
@@ -836,13 +858,34 @@ header p { display: none; }
   -webkit-user-select: none;
   user-select: none;
 }
-.viz-quick-actions {
+.viz-transport {
   position: absolute;
   top: 14px;
   right: 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  z-index: 4;
+}
+.viz-transport button {
+  width: 46px;
+  height: 46px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.36);
+}
+.viz-quick-actions {
+  position: absolute;
+  top: 14px;
+  right: 70px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 4;
+  pointer-events: none;
+}
+.viz-bpm-action {
+  position: absolute;
+  top: 14px;
+  left: 14px;
   z-index: 4;
   pointer-events: none;
 }
@@ -861,6 +904,24 @@ header p { display: none; }
   pointer-events: auto;
   transition: transform 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
+}
+.viz-bpm-btn {
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+}
+.viz-bpm-value {
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.viz-bpm-label {
+  font-size: 0.44rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  opacity: 0.72;
+  line-height: 1;
 }
 .viz-quick-btn:hover {
   background: rgba(25,25,44,0.92);
@@ -887,6 +948,11 @@ header p { display: none; }
   background: rgba(239,68,68,0.14);
   border-color: rgba(239,68,68,0.46);
   color: #fca5a5;
+}
+#btn-viz-bpm {
+  background: rgba(167,139,250,0.16);
+  border-color: rgba(167,139,250,0.42);
+  color: #e9ddff;
 }
 
 /* ── FRETBOARD PANEL ── */
@@ -1067,15 +1133,21 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
 
 /* ── MOBILE SCALE STRIP ── */
 #mobile-scale-strip {
-  display: none; /* shown via media query on mobile */
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  display: block;
+  position: relative;
+  height: 0;
+  min-height: 0;
+  padding: 0;
   flex-shrink: 0;
-  height: 52px;
-  background: rgba(11,11,24,0.98);
-  border-top: 1px solid rgba(167,139,250,0.2);
-  z-index: 200; /* below the fixed panels at z-600 */
+  background: transparent;
+  border: 0;
+  overflow: visible;
+  z-index: 0;
+}
+#mobile-scale-strip .mob-root-btn,
+#mobile-scale-strip .mob-root-lbl,
+#mobile-scale-strip .mob-sel {
+  display: none !important;
 }
 .mob-root-btn {
   width: 26px; height: 26px; border-radius: 50%;
@@ -1151,8 +1223,34 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   #slide-scale { display: none; }
   .main-layout { grid-template-columns: 1fr; }
   #slide-chord { display: none; }
+  .hdr-bpm { display: none; }
   #btn-mixer { display: none; }
   #btn-viz-mixer { display: flex; }
+  #btn-viz-bpm { display: flex; }
+  #btn-seq-panel-bpm,
+  #btn-drum-panel-bpm { display: flex; }
+  .viz-transport {
+    top: 14px;
+    left: 14px;
+    right: auto;
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .viz-quick-actions {
+    top: auto;
+    right: auto;
+    left: 14px;
+    bottom: 14px;
+  }
+  .viz-bpm-action {
+    top: 14px;
+    right: 14px;
+    left: auto;
+  }
+  #seq-wrap.open .panel-subheader,
+  #drum-wrap.open .panel-subheader {
+    display: flex;
+  }
 }
 
 /* ── RESPONSIVE: ≤768px — horizontal snap slides ── */
@@ -1184,9 +1282,8 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   /* slides becomes display:contents — its children join outer-wrap directly */
   #slides { display: contents; }
 
-  /* Mobile compact scale strip shown */
-  #mobile-scale-strip { display: flex; position: relative; z-index: 200; }
-  #mobile-scale-strip .mob-sel { display: none; }
+  /* Footer scale strip removed; only fixed mobile transport buttons remain */
+  #mobile-scale-strip { display: block; position: relative; z-index: 0; }
 
   /* main-layout as second slide (canvas only) */
   .main-layout {
@@ -1218,6 +1315,13 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   #seq-wrap .seq-panel,
   #drum-wrap .seq-panel,
   #solo-wrap .seq-panel { flex: 1; min-height: 0; }
+  #seq-wrap .panel-subheader,
+  #drum-wrap .panel-subheader {
+    display: flex;
+    padding: 8px 12px 6px;
+  }
+  #btn-seq-panel-bpm,
+  #btn-drum-panel-bpm { display: flex; }
 
   /* Seq/drum/solo headers: stack control groups vertically on mobile */
   #seq-wrap .seq-header,
@@ -1417,9 +1521,9 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   /* Hide transport + mixer from header — viz controls handle sound on mobile */
   .hdr-transport { display: none; }
 
-  /* BPM button moves to top-right of viz panel */
+  /* BPM button moves to top-left of viz panel */
   .hdr-bpm {
-    position: fixed; top: calc(var(--viz-top, 46px) + 10px); right: 12px;
+    position: fixed; top: calc(var(--viz-top, 46px) + 10px); left: 12px; right: auto;
     z-index: 500; margin: 0; padding: 0; border: none;
     gap: 6px; background: transparent;
   }
@@ -1427,15 +1531,19 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
 
   /* Mobile transport FABs — top-left of viz panel */
   #mob-btn-play, #mob-btn-pause, #mob-btn-stop {
-    position: fixed; z-index: 500;
-    top: calc(var(--viz-top, 46px) + 10px); transform: none;
+    position: absolute; z-index: 5;
+    top: 0; right: auto; transform: none;
     width: 42px; height: 42px; border-radius: 50%;
     box-shadow: 0 4px 18px rgba(0,0,0,0.5);
     -webkit-tap-highlight-color: transparent;
   }
-  #mob-btn-play  { left: 12px; }
-  #mob-btn-pause { left: 12px; }
-  #mob-btn-stop  { left: 62px; }
+  .viz-transport {
+    top: 12px;
+    left: 12px;
+    right: auto;
+    flex-direction: row;
+    gap: 8px;
+  }
   #mob-btn-play:active, #mob-btn-pause:active, #mob-btn-stop:active { transform: scale(0.88); }
   body:not(.on-viz-slide) #mob-btn-play,
   body:not(.on-viz-slide) #mob-btn-pause,
@@ -1500,9 +1608,16 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   .slide-dot.active { background: var(--accent); transform: scale(1.4); }
 
   .viz-quick-actions {
-    top: 66px;
-    right: 12px;
+    top: auto;
+    right: auto;
+    left: 12px;
+    bottom: 12px;
     gap: 8px;
+  }
+  .viz-bpm-action {
+    top: 12px;
+    right: 12px;
+    left: auto;
   }
   .viz-quick-btn {
     width: 42px;

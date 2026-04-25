@@ -129,12 +129,29 @@
 
   <!-- Canvas -->
   <div class="viz-panel" id="viz-panel">
-    <div class="viz-quick-actions" aria-label="Quick sound controls">
-      <button class="viz-quick-btn" id="btn-viz-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
-        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
+    <div class="viz-transport" aria-label="Transport controls">
+      <button class="mob-play-btn" id="mob-btn-play" title="Play">
+        <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
+      </button>
+      <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none">
+        <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
+      </button>
+      <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none">
+        <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
       </button>
       <button class="viz-quick-btn active-audio" id="btn-viz-mute" title="Mute audio" aria-label="Mute audio">
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>
+      </button>
+    </div>
+    <div class="viz-quick-actions" aria-label="Quick access controls">
+      <button class="viz-quick-btn" id="btn-viz-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
+      </button>
+    </div>
+    <div class="viz-bpm-action" aria-label="Tempo control">
+      <button class="viz-quick-btn viz-bpm-btn" id="btn-viz-bpm" title="Set tempo" aria-label="Set tempo">
+        <span class="viz-bpm-value" id="viz-bpm-val">120</span>
+        <span class="viz-bpm-label">BPM</span>
       </button>
     </div>
     <canvas id="canvas"></canvas>
@@ -169,6 +186,31 @@
 <!-- ═══ SEQUENCER ═══ -->
 <div id="seq-wrap">
   <div class="seq-panel">
+    <div class="panel-subheader" id="seq-subheader">
+      <div class="panel-subheader-group">
+        <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-seq-panel-play" title="Play">
+          <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-seq-panel-pause" title="Pause" style="display:none">
+          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-seq-panel-stop" title="Stop" style="display:none">
+          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn active-audio" id="btn-seq-panel-mute" title="Mute audio" aria-label="Mute audio">
+          <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>
+        </button>
+      </div>
+      <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn" id="btn-seq-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
+          <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
+        </button>
+        <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-seq-panel-bpm" title="Set tempo" aria-label="Set tempo">
+          <span class="viz-bpm-value" id="seq-panel-bpm-val">120</span>
+          <span class="viz-bpm-label">BPM</span>
+        </button>
+      </div>
+    </div>
     <div class="seq-header">
       <span class="seq-lbl">Rhythm</span>
       <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
@@ -223,6 +265,31 @@
 <!-- ═══ DRUM MACHINE ═══ -->
 <div id="drum-wrap">
   <div class="seq-panel">
+    <div class="panel-subheader" id="drum-subheader">
+      <div class="panel-subheader-group">
+        <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-drum-panel-play" title="Play">
+          <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-drum-panel-pause" title="Pause" style="display:none">
+          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-drum-panel-stop" title="Stop" style="display:none">
+          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn active-audio" id="btn-drum-panel-mute" title="Mute audio" aria-label="Mute audio">
+          <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>
+        </button>
+      </div>
+      <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn" id="btn-drum-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
+          <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
+        </button>
+        <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-drum-panel-bpm" title="Set tempo" aria-label="Set tempo">
+          <span class="viz-bpm-value" id="drum-panel-bpm-val">120</span>
+          <span class="viz-bpm-label">BPM</span>
+        </button>
+      </div>
+    </div>
     <div class="seq-header">
       <span class="seq-lbl">Bank</span>
       <select id="drum-bank-sel" class="sm" style="min-width:90px"></select>
@@ -500,9 +567,6 @@
 
 <!-- ── Mobile compact scale strip (canvas + seq slides; hidden on drums) ── -->
 <div id="mobile-scale-strip">
-  <button class="mob-play-btn" id="mob-btn-play" title="Play"><svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg></button>
-  <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg></button>
-  <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg></button>
   <button class="mob-root-btn" id="mob-root-prev" title="Previous root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-prev"></use></svg></button>
   <span class="mob-root-lbl" id="mob-root-lbl">C</span>
   <button class="mob-root-btn" id="mob-root-next" title="Next root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="simple-white-icons.svg#icon-next"></use></svg></button>
