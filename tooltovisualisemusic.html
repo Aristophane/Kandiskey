@@ -202,6 +202,7 @@
         </button>
       </div>
       <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-seq-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
         <button class="viz-quick-btn panel-round-btn" id="btn-seq-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
           <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
         </button>
@@ -224,7 +225,6 @@
       <span class="seq-val" id="seq-gate-val">65%</span>
       <div class="seq-sep"></div>
       <button class="midi-btn" id="btn-seq-demo" title="Load demo melody">♪ Demo</button>
-      <button class="midi-btn" id="btn-seq-clear" title="Clear grid">✕ Clear</button>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Source</span>
       <button class="midi-btn seq-src-btn active" id="seq-src-synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Sound</button>
@@ -281,6 +281,7 @@
         </button>
       </div>
       <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-drum-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
         <button class="viz-quick-btn panel-round-btn" id="btn-drum-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
           <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
         </button>
@@ -304,8 +305,6 @@
       <span class="seq-lbl">Vel</span>
       <input type="range" class="seq-sl" id="drum-vel" min="10" max="100" step="5" value="80" style="width:55px">
       <span class="seq-val" id="drum-vel-val">80%</span>
-      <div class="seq-sep"></div>
-      <button class="midi-btn" id="btn-drum-clear" title="Clear grid">✕ Clear</button>
       <div class="seq-sep"></div>
       <button class="midi-btn" id="btn-drum-pads" title="Configure pads">⚙ Pads</button>
     </div>

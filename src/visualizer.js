@@ -13,11 +13,52 @@ let _seqEngine       = { playing: false, displayStep: -1 };
 let _drawSequencer   = () => {};
 let _applyRootSelection = () => false;
 let _handleCenterInteraction = () => false;
+let _onFilterChange  = null;
 
 export function setSeqEngineRef(ref)          { _seqEngine     = ref; }
 export function setDrawSequencerCallback(fn)  { _drawSequencer = fn; }
 export function setRootSelectionCallback(fn)  { _applyRootSelection = fn; }
 export function setCenterInteractionCallback(fn) { _handleCenterInteraction = fn; }
+export function setFilterChangeCallback(fn)   { _onFilterChange = fn; }
+
+// ── Filter drag state ───────────────────────────────────────────────
+
+let _filterNorm       = 1.0;  // 0 = fully closed, 1 = fully open
+let _filterRotAngle   = -Math.PI / 2;
+let _filterAnimRunning = false;
+let _filterLastTs     = 0;
+let _filterDragPtrId  = null;
+let _filterDragStartY = 0;
+let _filterDragStartNorm = 1.0;
+let _filterDragActive = false;
+let _filterWasDragging = false;
+
+export function setFilterNorm(norm) {
+  _filterNorm = Math.max(0, Math.min(1, norm));
+  _startFilterAnim();
+}
+
+function _startFilterAnim() {
+  if (_filterAnimRunning) return;
+  _filterAnimRunning = true;
+  _filterLastTs = 0;
+  requestAnimationFrame(_filterAnimStep);
+}
+
+function _filterAnimStep(ts) {
+  const dt = _filterLastTs ? (ts - _filterLastTs) / 1000 : 0;
+  _filterLastTs = ts;
+  // One full rotation per quarter-BPM beat: (BPM/4) rpm → (BPM/4)/60 rps → × 2π rad/s
+  const rps = (SEQ.bpm / 12 / 60) * Math.PI * 2;
+  _filterRotAngle += rps * dt;
+  draw();
+  if (_filterDragPtrId !== null || _filterNorm < 0.995) {
+    requestAnimationFrame(_filterAnimStep);
+  } else {
+    _filterAnimRunning = false;
+    _filterLastTs = 0;
+  }
+}
 
 // ── DOM ─────────────────────────────────────────────────────────────
 
@@ -122,6 +163,45 @@ function animStep() {
   requestAnimationFrame(animStep);
 }
 
+// ── Filter arc visual ───────────────────────────────────────────────
+
+function drawFilterArc(cx, cy, R) {
+  if (_filterNorm >= 0.995 && _filterDragPtrId === null) return;
+  const sweepAngle = _filterNorm * Math.PI * 2;
+  const innerR = R * 0.115;
+  const outerR = R * 0.36;
+  const midR = (innerR + outerR) / 2;
+  const arcW = outerR - innerR;
+  const N = 60;
+  ctx.save();
+  ctx.lineWidth = arcW;
+  ctx.lineCap = 'butt';
+  for (let i = 0; i < N; i++) {
+    const t = i / N;
+    const a0 = _filterRotAngle + t * sweepAngle;
+    const a1 = _filterRotAngle + (i + 1) / N * sweepAngle;
+    // hue: 265 (violet) → 185 (cyan) → 38 (amber)
+    const hue = t < 0.5 ? 265 - t * 2 * 80 : 185 - (t - 0.5) * 2 * 147;
+    const alpha = (0.18 + 0.55 * Math.sin(t * Math.PI)) * (0.4 + 0.6 * _filterNorm);
+    ctx.strokeStyle = `hsla(${hue},88%,65%,${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(cx, cy, midR, a0, a1);
+    ctx.stroke();
+  }
+  // Leading tip glow
+  if (sweepAngle > 0.05) {
+    const tipA = _filterRotAngle + sweepAngle;
+    const tx = cx + midR * Math.cos(tipA);
+    const ty = cy + midR * Math.sin(tipA);
+    const g = ctx.createRadialGradient(tx, ty, 0, tx, ty, arcW * 1.6);
+    g.addColorStop(0, `rgba(251,191,36,${(0.5 + 0.4 * _filterNorm).toFixed(2)})`);
+    g.addColorStop(1, 'transparent');
+    ctx.beginPath(); ctx.arc(tx, ty, arcW * 1.6, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ── Main draw ───────────────────────────────────────────────────────
 
 export function draw() {
@@ -158,6 +238,9 @@ export function draw() {
   // Inner ring
   ctx.beginPath(); ctx.arc(cx, cy, R * 0.1, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Global filter sweep arc
+  drawFilterArc(cx, cy, R);
 
   // Chord click zone indicator
   if (chord) {
@@ -507,7 +590,52 @@ export function playChordNow() {
   addRipple(W / 2, H / 2, 'rgba(52,211,153,0.75)', Math.min(W, H) * 0.355 * 0.58);
 }
 
+// ── Filter drag ─────────────────────────────────────────────────────
+
+canvas.addEventListener('pointerdown', e => {
+  const { x, y } = canvasXY(e);
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const R = Math.min(canvas.width, canvas.height) * 0.355;
+  if (Math.hypot(x - cx, y - cy) > R * 1.15) return;
+  if (findNoteHitZone(x, y)) return;
+  if (pointInCircle(x, y, centerHitZone) && _handleCenterInteraction('available')) return;
+  _filterDragPtrId   = e.pointerId;
+  _filterDragStartY  = e.clientY;
+  _filterDragStartNorm = _filterNorm;
+  _filterDragActive  = false;
+  _filterWasDragging = false;
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerId !== _filterDragPtrId) return;
+  const dy = e.clientY - _filterDragStartY;
+  if (!_filterDragActive && Math.abs(dy) < 8) return;
+  _filterDragActive  = true;
+  _filterWasDragging = true;
+  _filterNorm = Math.max(0, Math.min(1, _filterDragStartNorm - dy / 220));
+  if (_onFilterChange) _onFilterChange(_filterNorm);
+  _startFilterAnim();
+  canvas.style.cursor = 'ns-resize';
+});
+
+canvas.addEventListener('pointerup', e => {
+  if (e.pointerId !== _filterDragPtrId) return;
+  _filterDragPtrId = null;
+  if (!_filterDragActive) return;
+  canvas.style.cursor = '';
+  // let the animation keep running until norm reaches 1
+  _startFilterAnim();
+});
+
+canvas.addEventListener('lostpointercapture', e => {
+  if (e.pointerId === _filterDragPtrId) _filterDragPtrId = null;
+});
+
+// ── Canvas click ─────────────────────────────────────────────────────
+
 canvas.addEventListener('click', e => {
+  if (_filterWasDragging) { _filterWasDragging = false; return; }
   const { x, y } = canvasXY(e);
   const noteZone = findNoteHitZone(x, y);
   if (noteZone) {
@@ -554,7 +682,16 @@ canvas.addEventListener('mousemove', e => {
   const dist = Math.hypot(x - cx, y - cy);
   const chordActive = CHORDS[S.chordName] !== null;
   if (dist > R * 1.15) { canvas.style.cursor = 'default'; canvas.title = ''; return; }
-  if (_seqEngine.playing) { canvas.style.cursor = 'default'; canvas.title = ''; return; }
-  canvas.style.cursor = 'pointer';
-  canvas.title = (chordActive && dist < R * CHORD_ZONE) ? 'Click · play chord' : 'Click · play arpeggio';
+  canvas.style.cursor = 'grab';
+  const filterPct = Math.round(_filterNorm * 100);
+  const filterLabel = _filterNorm >= 0.995 ? 'Open' : (Math.round(20 * Math.pow(1000, _filterNorm)) >= 1000
+    ? (Math.round(20 * Math.pow(1000, _filterNorm)) / 1000).toFixed(1) + 'kHz'
+    : Math.round(20 * Math.pow(1000, _filterNorm)) + 'Hz');
+  if (_seqEngine.playing) {
+    canvas.title = `Drag · filter cutoff (${filterLabel})`;
+    return;
+  }
+  canvas.title = (chordActive && dist < R * CHORD_ZONE)
+    ? `Click · play chord  |  Drag · filter cutoff (${filterLabel})`
+    : `Click · play arpeggio  |  Drag · filter cutoff (${filterLabel})`;
 });

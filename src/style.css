@@ -684,6 +684,18 @@ header p { display: none; }
 .panel-subheader-right {
   margin-left: auto;
 }
+.panel-clear-btn {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.38);
+  color: #fca5a5;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.panel-clear-btn:hover {
+  background: rgba(239,68,68,0.24);
+  border-color: rgba(239,68,68,0.6);
+  color: #f87171;
+}
 .panel-round-btn {
   width: 42px;
   height: 42px;
@@ -853,6 +865,7 @@ header p { display: none; }
 #canvas:focus,
 #canvas:active {
   outline: none;
+  touch-action: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -1529,13 +1542,12 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   }
   .hdr-bpm .tap-btn { display: none; }
 
-  /* Mobile transport FABs — top-left of viz panel */
+  /* Mobile transport FABs — inline in viz-transport row */
   #mob-btn-play, #mob-btn-pause, #mob-btn-stop {
-    position: absolute; z-index: 5;
-    top: 0; right: auto; transform: none;
     width: 42px; height: 42px; border-radius: 50%;
     box-shadow: 0 4px 18px rgba(0,0,0,0.5);
     -webkit-tap-highlight-color: transparent;
+    flex-shrink: 0;
   }
   .viz-transport {
     top: 12px;

@@ -32,6 +32,8 @@ import {
   setDrawSequencerCallback,
   setCenterInteractionCallback,
   setRootSelectionCallback,
+  setFilterChangeCallback,
+  setFilterNorm as vizSetFilterNorm,
   noteAngle, canvasXY, pointInPoly, CHORD_ZONE,
 } from './visualizer.js';
 import {
@@ -75,6 +77,16 @@ drumSetSyncSend(msg => Sync.send(msg));
 
 midiSetDraw(draw);
 midiSetDrawFretboard(scheduleDrawFretboard);
+
+setFilterChangeCallback(norm => {
+  const slider = document.getElementById('mix-gflt-cut');
+  const label  = document.getElementById('mix-gflt-val');
+  const v = norm * 100;
+  const hz = v >= 100 ? 20000 : Math.round(20 * Math.pow(1000, v / 100));
+  if (slider) slider.value = v;
+  if (label) label.textContent = v >= 100 ? 'Open' : (hz >= 1000 ? (hz / 1000).toFixed(1) + 'kHz' : hz + 'Hz');
+  withAudio(() => { if (audio.globalFilter) audio.globalFilter.frequency.setTargetAtTime(hz, audio.actx.currentTime, 0.015); });
+});
 
 let syncScalePickerUi = () => {};
 let openScaleSettingsPicker = () => false;
@@ -1362,7 +1374,7 @@ document.getElementById('seq-gate').addEventListener('input', function () {
 });
 
 document.getElementById('btn-seq-demo').addEventListener('click', () => seqLoadDemo());
-document.getElementById('btn-seq-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
+document.getElementById('btn-seq-panel-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
 ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => triggerSequencerPlay());
 });
@@ -1684,13 +1696,14 @@ function renderDrumPadConfig() {
   });
 }
 
-document.getElementById('btn-drum-clear').addEventListener('click', () => {
+function clearDrumGrid() {
   activeBankKeys().forEach(key => {
     for (let st = 0; st < seqSteps(); st++) delete DRUM_GRID[key + '_' + st];
   });
   document.getElementById('drum-preset-sel').value = 'Clear';
   scheduleDrmDraw();
-});
+}
+document.getElementById('btn-drum-panel-clear').addEventListener('click', clearDrumGrid);
 
 // ── MIXER PANEL ───────────────────────────────────────────────────────
 
@@ -1789,6 +1802,7 @@ document.getElementById('mix-gflt-cut').addEventListener('input', function () {
   const hz = v >= 100 ? 20000 : Math.round(20 * Math.pow(1000, v / 100));
   const label = v >= 100 ? 'Open' : (hz >= 1000 ? (hz / 1000).toFixed(1) + 'kHz' : hz + 'Hz');
   document.getElementById('mix-gflt-val').textContent = label;
+  vizSetFilterNorm(v / 100);
   withAudio(() => { if (audio.globalFilter) audio.globalFilter.frequency.setTargetAtTime(hz, audio.actx.currentTime, 0.015); });
 });
 document.getElementById('mix-gflt-res').addEventListener('input', function () {
