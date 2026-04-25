@@ -5,8 +5,10 @@
 import { SCALE_FAMILIES, RHYTHMS } from './data.js';
 
 // ── Synth parameters (read live by AudioEngine._playHz)
+const _SMOOTH_WAVES = ['sine', 'triangle'];
+
 export const SYNTH = {
-  waveform:     'sine',
+  waveform:     _SMOOTH_WAVES[Math.round(Math.random())],
   attack:       0.008,
   decay:        0.30,
   sustain:      0.62,

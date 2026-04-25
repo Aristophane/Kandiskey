@@ -9,7 +9,7 @@ import { audio } from './audio.js';
 
 // Separate synth state — independent of the sequencer's SYNTH
 export const SOLO_SYNTH = {
-  waveform:     'sine',
+  waveform:     ['sine', 'triangle'][Math.round(Math.random())],
   attack:       0.010,
   decay:        0.50,
   sustain:      0.55,

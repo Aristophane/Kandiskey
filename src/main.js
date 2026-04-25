@@ -1112,6 +1112,12 @@ document.querySelectorAll('.solo-wave-cvs').forEach(cvs => {
   });
 });
 
+// Initialise wave button active states to match the randomised defaults
+document.querySelectorAll('.wave-cvs').forEach(c =>
+  c.classList.toggle('active', c.dataset.wave === SYNTH.waveform));
+document.querySelectorAll('.solo-wave-cvs').forEach(c =>
+  c.classList.toggle('active', c.dataset.wave === SOLO_SYNTH.waveform));
+
 // ── MIDI FILE SELECT ──────────────────────────────────────────────────
 
 (function () {
@@ -1868,11 +1874,11 @@ function syncHandleMessage(msg) {
       scheduleDrawSequencer();
       break;
     case 'GRID_SET':
-      if (msg.val) SEQ.grid[msg.key] = true; else delete SEQ.grid[msg.key];
+      if (msg.val) SEQ.grid[msg.key] = msg.val; else delete SEQ.grid[msg.key];
       scheduleDrawSequencer();
       break;
     case 'DRUM_SET':
-      if (msg.val) DRUM_GRID[msg.key] = true; else delete DRUM_GRID[msg.key];
+      if (msg.val) DRUM_GRID[msg.key] = msg.val; else delete DRUM_GRID[msg.key];
       scheduleDrmDraw();
       break;
     case 'SEQ_PARAM':

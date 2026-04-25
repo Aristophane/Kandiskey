@@ -3,7 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import { audio } from './audio.js';
-import { seqSteps, seqR, drumLoopLen, setDrumLoopLen } from './state.js';
+import { seqSteps, seqR, drumLoopLen, setDrumLoopLen, seqStepDur, epochMs } from './state.js';
+import { sharedNow } from './sync.js';
 
 // seqEngine reference — injected by sequencer.js after init to avoid circular import
 let seqEngine = { playing: false, drumDisplayStep: -1, displayStep: -1 };
@@ -638,13 +639,23 @@ function _getBankKeys() {
   return _bankKeysCache;
 }
 
-export function drumPlayStep(step, time) {
+function _drmCurrentLoopCount() {
+  if (!seqEngine.playing || epochMs === null) return 0;
+  const drmLoop = Math.max(1, Math.min(drumLoopLen, seqSteps()));
+  return Math.floor(Math.max(0, sharedNow() - epochMs) / (drmLoop * seqStepDur() * 1000));
+}
+
+export function drumPlayStep(step, time, loopCount = 0) {
   if (!drumsReady || !audio.enabled) return;
   const keys    = _getBankKeys();
   const actxNow = audio.actx.currentTime;
   for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    if (!DRUM_GRID[key + '_' + step]) continue;
+    const key     = keys[i];
+    const cellVal = DRUM_GRID[key + '_' + step];
+    if (!cellVal) continue;
+    const cellN = typeof cellVal === 'object' ? cellVal.n : 1;
+    const cellO = typeof cellVal === 'object' ? cellVal.o : 0;
+    if (cellN > 1 && loopCount % cellN !== cellO) continue;
     const ab = drumBuffers[key];
     if (!ab) continue;
     const src = audio.actx.createBufferSource();
@@ -698,10 +709,21 @@ export function drawDrumMachine() {
   drumCtx.fillStyle = 'rgba(255,255,255,0.022)';
   drumCtx.fillRect(0, 0, LM, H);
 
+  // Smooth loop phase for blink animation
+  const drmLoop = Math.max(1, Math.min(drumLoopLen, steps));
+  let drmLoopPhase = 0, drmLoopCount = 0;
+  if (seqEngine.playing && epochMs !== null) {
+    const loopDurMs = drmLoop * seqStepDur() * 1000;
+    const elapsed   = sharedNow() - epochMs;
+    const absLoop   = Math.max(0, elapsed) / loopDurMs;
+    drmLoopCount = Math.floor(absLoop);
+    drmLoopPhase = absLoop % 1;
+  }
+
   bankKeys.forEach((key, row) => {
     const y = row * gH;
-    const isKick  = key === 'bassdrum';
-    const isSnare = key === 'snare';
+    const isKick  = key.startsWith('bassdrum');
+    const isSnare = key.startsWith('snare');
     const labelColor = isKick ? '#fb923c' : isSnare ? '#a78bfa' : 'rgba(255,255,255,0.45)';
 
     const fs = Math.max(Math.min(Math.floor(gH * 0.48), 10), 7);
@@ -711,20 +733,49 @@ export function drawDrumMachine() {
     drumCtx.fillText(bankLabels[key] || key, LM / 2, y + gH / 2);
 
     for (let st = 0; st < steps; st++) {
-      const x = LM + st * gW;
-      const active = !!DRUM_GRID[key + '_' + st];
+      const x        = LM + st * gW;
+      const cellVal  = DRUM_GRID[key + '_' + st];
+      const active   = !!cellVal;
+      const cycleN   = typeof cellVal === 'object' ? cellVal.n : 1;
+      const cellO    = typeof cellVal === 'object' ? cellVal.o : 0;
       const drumStep = seqEngine.drumDisplayStep ?? seqEngine.displayStep;
-      const isCur  = st === drumStep && seqEngine.playing;
-      const isBeat = Number.isInteger(st / spb) || Math.abs(st % spb) < 0.001;
-      const isBar  = Math.abs(st % (spb * 4)) < 0.001;
+      const isCur    = st === drumStep && seqEngine.playing;
+      const isBeat   = Number.isInteger(st / spb) || Math.abs(st % spb) < 0.001;
+      const isBar    = Math.abs(st % (spb * 4)) < 0.001;
+
+      // Base colours kept from original drum palette
+      const brightCur  = isKick ? 'rgba(251,146,60,0.92)'  : isSnare ? 'rgba(167,139,250,0.92)' : 'rgba(96,165,250,0.92)';
+      const brightBase = isKick ? '251,146,60' : isSnare ? '167,139,250' : '96,165,250';
+      const brightFull = isKick ? 'rgba(251,146,60,0.78)'  : isSnare ? 'rgba(167,139,250,0.72)' : 'rgba(96,165,250,0.68)';
 
       let fill;
-      if      (active && isCur) fill = isKick ? 'rgba(251,146,60,0.92)' : isSnare ? 'rgba(167,139,250,0.92)' : 'rgba(96,165,250,0.92)';
-      else if (active)          fill = isKick ? 'rgba(251,146,60,0.78)' : isSnare ? 'rgba(167,139,250,0.72)' : 'rgba(96,165,250,0.68)';
-      else if (isCur)           fill = 'rgba(255,255,255,0.14)';
-      else if (isBar)           fill = 'rgba(255,255,255,0.065)';
-      else if (isBeat)          fill = 'rgba(255,255,255,0.038)';
-      else                      fill = 'rgba(255,255,255,0.016)';
+      if (active && cycleN > 1) {
+        const numBlinks  = cycleN - 1;
+        const isActiveLp = drmLoopCount % cycleN === cellO;
+        if (isCur) {
+          fill = brightCur;
+        } else if (!seqEngine.playing) {
+          fill = `rgba(${brightBase},0.55)`;
+        } else if (isActiveLp) {
+          const b = _drmBlinkValue(drmLoopPhase, numBlinks);
+          fill = `rgba(${brightBase},${(0.30 + b * 0.48).toFixed(2)})`;
+        } else {
+          const b = _drmBlinkValue(drmLoopPhase, numBlinks);
+          fill = `rgba(${brightBase},${(0.10 + b * 0.09).toFixed(2)})`;
+        }
+      } else if (active && isCur) {
+        fill = brightCur;
+      } else if (active) {
+        fill = brightFull;
+      } else if (isCur) {
+        fill = 'rgba(255,255,255,0.14)';
+      } else if (isBar) {
+        fill = 'rgba(255,255,255,0.065)';
+      } else if (isBeat) {
+        fill = 'rgba(255,255,255,0.038)';
+      } else {
+        fill = 'rgba(255,255,255,0.016)';
+      }
 
       drumCtx.fillStyle = fill;
       drumCtx.fillRect(x + 0.5, y + 0.5, gW - 1, gH - 1);
@@ -751,7 +802,6 @@ export function drawDrumMachine() {
   drumCtx.strokeStyle = 'rgba(255,255,255,0.12)'; drumCtx.lineWidth = 1; drumCtx.stroke();
 
   // Loop length overlay — dim steps outside active drum loop
-  const drmLoop = Math.max(1, Math.min(drumLoopLen, steps));
   if (drmLoop < steps) {
     const loopEndX = LM + drmLoop * gW;
     drumCtx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -763,21 +813,87 @@ export function drawDrumMachine() {
   }
 }
 
-drumCanvas.addEventListener('click', e => {
+// ── Drum tap / long-press handler ────────────────────────────────────
+// 1 tap → toggle; 2/3/4 taps → cycle every 2/3/4 loops (phase-anchored)
+// Long press (600 ms) → reset (turn off)
+
+function _drmBlinkValue(loopPhase, numBlinks) {
+  if (numBlinks <= 0) return 0;
+  let v = 0;
+  const hw = 0.38 / numBlinks;
+  for (let b = 0; b < numBlinks; b++) {
+    const center = (b + 0.5) / numBlinks;
+    let dt = Math.abs(loopPhase - center);
+    if (dt > 0.5) dt = 1 - dt;
+    if (dt < hw) { const t = 1 - dt / hw; v = Math.max(v, t * t * (3 - 2 * t)); }
+  }
+  return v;
+}
+
+let _drmTapKey = null, _drmTapCount = 0, _drmTapTimer = null;
+let _drmLpTimer = null, _drmLpStartX = 0, _drmLpStartY = 0;
+
+function _drmCell(e) {
   const rect = drumCanvas.getBoundingClientRect();
   const px = e.clientX - rect.left, py = e.clientY - rect.top;
   const W = drumCanvas.clientWidth, H = drumCanvas.clientHeight;
   const bKeys = activeBankKeys();
   const n = bKeys.length;
-  if (px < 48) return;
+  if (px < 48 || n === 0) return null;
   const gW = (W - 48) / seqSteps(), gH = H / n;
   const st  = Math.floor((px - 48) / gW);
   const row = Math.floor(py / gH);
-  if (st < 0 || st >= seqSteps() || row < 0 || row >= n) return;
-  const key = bKeys[row] + '_' + st;
-  if (DRUM_GRID[key]) { delete DRUM_GRID[key]; _syncSend({ type: 'DRUM_SET', key, val: false }); }
-  else                { DRUM_GRID[key] = true;  _syncSend({ type: 'DRUM_SET', key, val: true  }); }
+  if (st < 0 || st >= seqSteps() || row < 0 || row >= n) return null;
+  return bKeys[row] + '_' + st;
+}
+
+drumCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+drumCanvas.addEventListener('pointerdown', e => {
+  const key = _drmCell(e);
+  if (!key) return;
+  _drmLpStartX = e.clientX; _drmLpStartY = e.clientY;
+  clearTimeout(_drmLpTimer);
+  _drmLpTimer = setTimeout(() => {
+    _drmLpTimer = null;
+    clearTimeout(_drmTapTimer); _drmTapKey = null; _drmTapCount = 0;
+    if (DRUM_GRID[key]) {
+      delete DRUM_GRID[key];
+      _syncSend({ type: 'DRUM_SET', key, val: false });
+      scheduleDrmDraw();
+    }
+  }, 600);
+});
+
+drumCanvas.addEventListener('pointermove', e => {
+  if (_drmLpTimer && (Math.abs(e.clientX - _drmLpStartX) > 10 || Math.abs(e.clientY - _drmLpStartY) > 10)) {
+    clearTimeout(_drmLpTimer); _drmLpTimer = null;
+  }
+});
+
+drumCanvas.addEventListener('pointerup', e => {
+  if (!_drmLpTimer) return;
+  clearTimeout(_drmLpTimer); _drmLpTimer = null;
+  const key = _drmCell(e);
+  if (!key) return;
+
+  clearTimeout(_drmTapTimer);
+
+  if (_drmTapKey === key) {
+    _drmTapCount = Math.min(_drmTapCount + 1, 4);
+    const lc  = _drmCurrentLoopCount();
+    const val = { n: _drmTapCount, o: lc % _drmTapCount };
+    DRUM_GRID[key] = val;
+    _syncSend({ type: 'DRUM_SET', key, val });
+  } else {
+    _drmTapKey = key; _drmTapCount = 1;
+    if (DRUM_GRID[key]) { delete DRUM_GRID[key]; _syncSend({ type: 'DRUM_SET', key, val: false }); }
+    else                { DRUM_GRID[key] = 1;    _syncSend({ type: 'DRUM_SET', key, val: 1    }); }
+  }
+
   scheduleDrmDraw();
+  if (_drmTapCount >= 4) { _drmTapKey = null; _drmTapCount = 0; return; }
+  _drmTapTimer = setTimeout(() => { _drmTapKey = null; _drmTapCount = 0; }, 350);
 });
 
 

@@ -47,6 +47,7 @@ export const seqEngine = {
   paused: false,
   _pausedStep: -1,
   step: 0,
+  _absStep: 0,
   nextTime: 0,
   startTime: 0,
   displayStep: -1,
@@ -54,7 +55,7 @@ export const seqEngine = {
   _ivl: null,
   _raf: null,
 
-  _playStep(step, time) {
+  _playStep(step, time, loopCount) {
     const scale = getScale();
     const n = scale.length;
     if (n === 0) return;
@@ -62,7 +63,11 @@ export const seqEngine = {
     const noteDur = Math.max(seqStepDur() * SEQ.gate, 0.04);
 
     for (let si = 0; si < n; si++) {
-      if (!SEQ.grid[`${si}_${step}`]) continue;
+      const cellVal = SEQ.grid[`${si}_${step}`];
+      if (!cellVal) continue;
+      const cellN = typeof cellVal === 'object' ? cellVal.n : 1;
+      const cellO = typeof cellVal === 'object' ? cellVal.o : 0;
+      if (cellN > 1 && loopCount % cellN !== cellO) continue;
       let freq;
       if (S.family === 'arabic' && MAQAM_CENTS[S.scaleName]) {
         const cents = MAQAM_CENTS[S.scaleName][si] ?? 0;
@@ -107,8 +112,8 @@ export const seqEngine = {
         const audioT  = now + (epochMs + stepIdx * dur * 1000 - worldNow) / 1000;
         if (audioT > now + LOOK) break;
         if (audioT < now - 0.05) { this._lastSched = stepIdx; continue; }
-        this._playStep(stepIdx % melLoop, audioT);
-        drumPlayStep(stepIdx % drmLoop,   audioT);
+        this._playStep(stepIdx % melLoop, audioT, Math.floor(stepIdx / melLoop));
+        drumPlayStep(stepIdx % drmLoop,   audioT, Math.floor(stepIdx / drmLoop));
         this._lastSched = stepIdx;
       }
 
@@ -116,10 +121,12 @@ export const seqEngine = {
       const melDur = melLoop * dur;
       const drmDur = drmLoop * dur;
       while (this.nextTime < now + LOOK) {
-        this._playStep(this.step % melLoop, this.nextTime);
-        drumPlayStep(this.step % drmLoop,   this.nextTime);
+        const abs = this._absStep;
+        this._playStep(abs % melLoop, this.nextTime, Math.floor(abs / melLoop));
+        drumPlayStep(abs % drmLoop,   this.nextTime, Math.floor(abs / drmLoop));
         this.nextTime += dur;
-        this.step = (this.step + 1) % loopLen;
+        this._absStep++;
+        this.step = this._absStep % loopLen;
       }
       const e              = now - this.startTime;
       this.displayStep     = e < 0 ? 0 : Math.floor((e % melDur) / dur) % melLoop;
@@ -139,21 +146,25 @@ export const seqEngine = {
       setEpochMs(remoteEpochMs);
       this._lastSched  = undefined;
       this._pausedStep = -1;
+      this._absStep    = 0;
     } else if (this._pausedStep >= 0) {
       // Resume from pause — rebuild epoch so playback continues from the frozen step
       setEpochMs(sharedNow() - this._pausedStep * seqStepDur() * 1000);
       this._lastSched  = this._pausedStep - 1;
+      this._absStep    = this._pausedStep;
       this._pausedStep = -1;
       _syncSend({ type: 'PLAY', epochMs, masterBpm, ..._syncGetFullState() });
     } else if (peerEpochMs !== null) {
       setEpochMs(peerEpochMs);
       this._barJoining = true;
       this._lastSched  = undefined;
+      this._absStep    = 0;
       _syncSend({ type: 'JOINED', epochMs, masterBpm, ..._syncGetFullState() });
     } else {
       setEpochMs(sharedNow());
       setMasterBpm(SEQ.bpm);
       this._lastSched = -1;
+      this._absStep   = 0;
       _syncSend({ type: 'PLAY', epochMs, masterBpm, ..._syncGetFullState() });
     }
 
@@ -232,6 +243,26 @@ export function scheduleDrawSequencer() {
   requestAnimationFrame(() => { _seqDrawPending = false; drawSequencer(); });
 }
 
+// Returns 0–1 brightness for a smooth multi-pulse blink at the given loop phase.
+// numBlinks pulses are spread evenly across the loop; each is a quadratic ease bump.
+function _blinkValue(loopPhase, numBlinks) {
+  if (numBlinks <= 0) return 0;
+  let v = 0;
+  const hw = 0.38 / numBlinks; // half-width of each pulse
+  for (let b = 0; b < numBlinks; b++) {
+    const center = (b + 0.5) / numBlinks;
+    let dt = Math.abs(loopPhase - center);
+    if (dt > 0.5) dt = 1 - dt; // wrap around loop boundary
+    if (dt < hw) {
+      const t = 1 - dt / hw; // 1 at peak, 0 at edge
+      v = Math.max(v, t * t * (3 - 2 * t)); // smoothstep
+    }
+  }
+  return v;
+}
+
+const CYCLE_RGB = ['', '', '52,211,153', '251,146,60', '244,114,182'];
+
 export function drawSequencer() {
   const wrap = seqCanvas.parentElement;
   const DPR  = window.devicePixelRatio || 1;
@@ -259,6 +290,17 @@ export function drawSequencer() {
 
   if (n === 0) return;
 
+  // Smooth loop phase (0–1) and absolute loop count — used for blink animation
+  const melLoop = Math.max(1, Math.min(SEQ.loopLen, steps));
+  let loopPhase = 0, loopCount = 0;
+  if (seqEngine.playing && epochMs !== null) {
+    const loopDurMs = melLoop * seqStepDur() * 1000;
+    const elapsed   = sharedNow() - epochMs;
+    const absLoop   = Math.max(0, elapsed) / loopDurMs;
+    loopCount = Math.floor(absLoop);
+    loopPhase = absLoop % 1;
+  }
+
   for (let row = 0; row < n; row++) {
     const si      = n - 1 - row;
     const y       = row * gH;
@@ -274,19 +316,47 @@ export function drawSequencer() {
     seqCtx.fillText(CHROMATIC[noteIdx], LM / 2, y + gH / 2);
 
     for (let st = 0; st < steps; st++) {
-      const x      = LM + st * gW;
-      const active = !!SEQ.grid[`${si}_${st}`];
-      const isCur  = st === seqEngine.displayStep && seqEngine.playing;
-      const isBeat = Number.isInteger(st / spb) || Math.abs(st % spb) < 0.001;
-      const isBar  = Math.abs(st % (spb * 4)) < 0.001;
+      const x       = LM + st * gW;
+      const cellVal = SEQ.grid[`${si}_${st}`];
+      const active  = !!cellVal;
+      const cycleN  = typeof cellVal === 'object' ? cellVal.n : 1;
+      const isCur   = st === seqEngine.displayStep && seqEngine.playing;
+      const isBeat  = Number.isInteger(st / spb) || Math.abs(st % spb) < 0.001;
+      const isBar   = Math.abs(st % (spb * 4)) < 0.001;
+
+      const cellO   = typeof cellVal === 'object' ? cellVal.o : 0;
 
       let fill;
-      if      (active && isCur) fill = 'rgba(245,158,11,0.92)';
-      else if (active)          fill = 'rgba(167,139,250,0.80)';
-      else if (isCur)           fill = 'rgba(255,255,255,0.16)';
-      else if (isBar)           fill = 'rgba(255,255,255,0.065)';
-      else if (isBeat)          fill = 'rgba(255,255,255,0.038)';
-      else                      fill = 'rgba(255,255,255,0.016)';
+      if (active && cycleN > 1) {
+        const rgb         = CYCLE_RGB[Math.min(cycleN, 4)];
+        const numBlinks   = cycleN - 1;
+        const isActiveLp  = loopCount % cycleN === cellO;
+        if (isCur) {
+          fill = 'rgba(245,158,11,0.92)';
+        } else if (!seqEngine.playing) {
+          fill = `rgba(${rgb},0.55)`;
+        } else if (isActiveLp) {
+          // Playing loop: blink numBlinks times, alpha sweeps 0.35 → 0.82
+          const b = _blinkValue(loopPhase, numBlinks);
+          fill = `rgba(${rgb},${(0.35 + b * 0.47).toFixed(2)})`;
+        } else {
+          // Skip loop: darkened with very subtle blink rhythm
+          const b = _blinkValue(loopPhase, numBlinks);
+          fill = `rgba(${rgb},${(0.12 + b * 0.09).toFixed(2)})`;
+        }
+      } else if (active && isCur) {
+        fill = 'rgba(245,158,11,0.92)';
+      } else if (active) {
+        fill = 'rgba(167,139,250,0.80)';
+      } else if (isCur) {
+        fill = 'rgba(255,255,255,0.16)';
+      } else if (isBar) {
+        fill = 'rgba(255,255,255,0.065)';
+      } else if (isBeat) {
+        fill = 'rgba(255,255,255,0.038)';
+      } else {
+        fill = 'rgba(255,255,255,0.016)';
+      }
 
       seqCtx.fillStyle = fill;
       seqCtx.fillRect(x + 0.5, y + 0.5, gW - 1, gH - 1);
@@ -330,22 +400,88 @@ export function drawSequencer() {
   }
 }
 
-// ── Click handler ───────────────────────────────────────────────────
+// ── Loop-count helper (used by tap handlers) ────────────────────────
 
-seqCanvas.addEventListener('click', e => {
+function seqCurrentLoopCount() {
+  if (!seqEngine.playing || epochMs === null) return 0;
+  const melLoop = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
+  return Math.floor(Math.max(0, sharedNow() - epochMs) / (melLoop * seqStepDur() * 1000));
+}
+
+// ── Tap / long-press handler ─────────────────────────────────────────
+// 1 tap   → toggle on/off (cycle 1)
+// 2 taps  → play every 2 loops
+// 3 taps  → play every 3 loops
+// 4 taps  → play every 4 loops
+// Long press (600 ms) → reset (turn off)
+
+let _tapKey = null, _tapCount = 0, _tapTimer = null;
+let _lpTimer = null, _lpStartX = 0, _lpStartY = 0;
+
+function _seqCell(e) {
   const rect = seqCanvas.getBoundingClientRect();
   const px   = e.clientX - rect.left, py = e.clientY - rect.top;
   const W    = seqCanvas.clientWidth,  H  = seqCanvas.clientHeight;
   const scale = getScale(), n = scale.length;
-  if (n === 0 || px < 30) return;
+  if (n === 0 || px < 30) return null;
   const gW = (W - 30) / seqSteps(), gH = H / n;
   const st = Math.floor((px - 30) / gW), row = Math.floor(py / gH);
   const si = n - 1 - row;
-  if (st < 0 || st >= seqSteps() || si < 0 || si >= n) return;
-  const key = `${si}_${st}`;
-  if (SEQ.grid[key]) { delete SEQ.grid[key]; _syncSend({ type: 'GRID_SET', key, val: false }); }
-  else               { SEQ.grid[key] = true;  _syncSend({ type: 'GRID_SET', key, val: true  }); }
-  scheduleDrawSequencer(); // deferred — never blocks _tick()
+  if (st < 0 || st >= seqSteps() || si < 0 || si >= n) return null;
+  return `${si}_${st}`;
+}
+
+seqCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+seqCanvas.addEventListener('pointerdown', e => {
+  const key = _seqCell(e);
+  if (!key) return;
+  _lpStartX = e.clientX; _lpStartY = e.clientY;
+  clearTimeout(_lpTimer);
+  _lpTimer = setTimeout(() => {
+    _lpTimer = null;
+    clearTimeout(_tapTimer); _tapKey = null; _tapCount = 0;
+    if (SEQ.grid[key]) {
+      delete SEQ.grid[key];
+      _syncSend({ type: 'GRID_SET', key, val: false });
+      scheduleDrawSequencer();
+    }
+  }, 600);
+});
+
+seqCanvas.addEventListener('pointermove', e => {
+  if (_lpTimer && (Math.abs(e.clientX - _lpStartX) > 10 || Math.abs(e.clientY - _lpStartY) > 10)) {
+    clearTimeout(_lpTimer); _lpTimer = null;
+  }
+});
+
+seqCanvas.addEventListener('pointerup', e => {
+  if (!_lpTimer) return;
+  clearTimeout(_lpTimer); _lpTimer = null;
+  const key = _seqCell(e);
+  if (!key) return;
+
+  clearTimeout(_tapTimer);
+
+  if (_tapKey === key) {
+    // Additional tap — upgrade cycle, anchoring phase to the current loop
+    _tapCount = Math.min(_tapCount + 1, 4);
+    const lc  = seqCurrentLoopCount();
+    const val = { n: _tapCount, o: lc % _tapCount };
+    SEQ.grid[key] = val;
+    _syncSend({ type: 'GRID_SET', key, val });
+  } else {
+    // First tap on this cell — toggle immediately (cycle 1 plays every loop)
+    _tapKey = key; _tapCount = 1;
+    if (SEQ.grid[key]) { delete SEQ.grid[key]; _syncSend({ type: 'GRID_SET', key, val: false }); }
+    else               { SEQ.grid[key] = 1;    _syncSend({ type: 'GRID_SET', key, val: 1    }); }
+  }
+
+  scheduleDrawSequencer();
+
+  if (_tapCount >= 4) { _tapKey = null; _tapCount = 0; return; }
+
+  _tapTimer = setTimeout(() => { _tapKey = null; _tapCount = 0; }, 350);
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────
