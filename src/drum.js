@@ -3,8 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import { audio } from './audio.js';
-import { seqSteps, seqR, drumLoopLen, setDrumLoopLen, seqStepDur, epochMs } from './state.js';
-import { sharedNow } from './sync.js';
+import { seqSteps, seqR, drumLoopLen, setDrumLoopLen } from './state.js';
 
 // seqEngine reference — injected by sequencer.js after init to avoid circular import
 let seqEngine = { playing: false, drumDisplayStep: -1, displayStep: -1 };
@@ -640,9 +639,8 @@ function _getBankKeys() {
 }
 
 function _drmCurrentLoopCount() {
-  if (!seqEngine.playing || epochMs === null) return 0;
-  const drmLoop = Math.max(1, Math.min(drumLoopLen, seqSteps()));
-  return Math.floor(Math.max(0, sharedNow() - epochMs) / (drmLoop * seqStepDur() * 1000));
+  if (!seqEngine.playing) return 0;
+  return seqEngine.getTransportSnapshot().drumLoopCount;
 }
 
 export function drumPlayStep(step, time, loopCount = 0) {
@@ -711,14 +709,9 @@ export function drawDrumMachine() {
 
   // Smooth loop phase for blink animation
   const drmLoop = Math.max(1, Math.min(drumLoopLen, steps));
-  let drmLoopPhase = 0, drmLoopCount = 0;
-  if (seqEngine.playing && epochMs !== null) {
-    const loopDurMs = drmLoop * seqStepDur() * 1000;
-    const elapsed   = sharedNow() - epochMs;
-    const absLoop   = Math.max(0, elapsed) / loopDurMs;
-    drmLoopCount = Math.floor(absLoop);
-    drmLoopPhase = absLoop % 1;
-  }
+  const transport = seqEngine.playing ? seqEngine.getTransportSnapshot() : null;
+  const drmLoopPhase = transport?.drumLoopPhase ?? 0;
+  const drmLoopCount = transport?.drumLoopCount ?? 0;
 
   bankKeys.forEach((key, row) => {
     const y = row * gH;

@@ -10,7 +10,7 @@ import {
 } from './state.js';
 import { CHROMATIC, MAQAM_CENTS } from './data.js';
 import { drumPlayStep, drawDrumMachine, scheduleDrmDraw } from './drum.js';
-import { sharedNow } from './sync.js';
+import { sharedNow, sharedTimeToAudioTime } from './sync.js';
 
 // ── Injected callbacks ──────────────────────────────────────────────
 
@@ -40,20 +40,52 @@ export function setDrawFretboardCallback(fn){ _drawFretboard    = fn; }
 const seqCanvas = document.getElementById('seq-canvas');
 const seqCtx    = seqCanvas.getContext('2d');
 
+const SCHED_LOOK_AHEAD = 0.22;
+const START_LEAD_MS = 180;
+const SCHED_INTERVAL_MS = 12;
+const STEP_EPS = 1e-4;
+
+function _parseTransportAnchor(anchor) {
+  if (anchor === null || anchor === undefined) return null;
+  if (typeof anchor === 'number') {
+    return { sharedMs: anchor, absStep: 0, revision: 0 };
+  }
+  if (typeof anchor !== 'object') return null;
+  const sharedMs = anchor.sharedMs ?? anchor.epochMs ?? null;
+  if (sharedMs === null) return null;
+  return {
+    sharedMs,
+    absStep: Math.max(0, anchor.absStep ?? anchor.transportAbsStep ?? 0),
+    revision: Math.max(0, anchor.revision ?? anchor.transportRevision ?? 0),
+  };
+}
+
+function _isWholeStep(step) {
+  return Math.abs(step - Math.round(step)) < STEP_EPS;
+}
+
+function _schedulerLastForStep(step) {
+  const clamped = Math.max(0, step);
+  return _isWholeStep(clamped) ? Math.round(clamped) - 1 : Math.floor(clamped);
+}
+
 // ── Sequencer engine ────────────────────────────────────────────────
 
 export const seqEngine = {
   playing: false,
   paused: false,
-  _pausedStep: -1,
+  _pausedAbsStep: -1,
   step: 0,
   _absStep: 0,
-  nextTime: 0,
-  startTime: 0,
+  _anchorAbsStep: 0,
+  _pendingPeerAnchor: null,
+  _transportRevision: 0,
   displayStep: -1,
   drumDisplayStep: -1,
   _ivl: null,
   _raf: null,
+  _worker: undefined,
+  _corrTick: 0,
 
   _playStep(step, time, loopCount) {
     const scale = getScale();
@@ -79,98 +111,211 @@ export const seqEngine = {
     }
   },
 
-  _tick() {
-    const LOOK    = 0.15;
-    const dur     = seqStepDur();
-    const melLoop = Math.max(1, Math.min(SEQ.loopLen,  seqSteps()));
-    const drmLoop = Math.max(1, Math.min(drumLoopLen,  seqSteps()));
-    const loopLen = Math.max(melLoop, drmLoop);
-    const now     = audio.actx.currentTime;
+  _ensureWorker() {
+    if (this._worker !== undefined) return this._worker;
+    try {
+      this._worker = new Worker(new URL('./transport-worker.js', import.meta.url), { type: 'module' });
+      this._worker.addEventListener('message', event => {
+        if (event.data?.type !== 'TICK' || !this.playing) return;
+        try { this._tick(); } catch (e) { console.error('[seq] _tick error:', e); }
+      });
+    } catch (e) {
+      console.warn('[seq] transport worker unavailable, falling back to main-thread timer:', e);
+      this._worker = null;
+    }
+    return this._worker;
+  },
 
-    if (epochMs !== null) {
-      const worldNow  = sharedNow();
-      const elapsed   = (worldNow - epochMs) / 1000;
+  _startScheduler() {
+    clearInterval(this._ivl);
+    const worker = this._ensureWorker();
+    if (worker) {
+      worker.postMessage({ type: 'START', intervalMs: SCHED_INTERVAL_MS });
+      return;
+    }
+    this._ivl = setInterval(() => {
+      if (!this.playing) return;
+      try { this._tick(); } catch (e) { console.error('[seq] _tick error:', e); }
+    }, SCHED_INTERVAL_MS);
+  },
 
-      const globalStep     = Math.max(0, Math.floor(elapsed / dur));
-      this.displayStep     = globalStep % melLoop;
-      this.drumDisplayStep = globalStep % drmLoop;
-
-      if (this._barJoining) {
-        const nextBarStep   = Math.ceil((globalStep + 1) / loopLen) * loopLen;
-        const nextBarAudioT = now + (epochMs + nextBarStep * dur * 1000 - worldNow) / 1000;
-        if (nextBarAudioT <= now + LOOK) {
-          this._barJoining = false;
-          this._lastSched  = nextBarStep - 1;
-        }
-        return;
-      }
-
-      if (this._lastSched === undefined) this._lastSched = globalStep - 1;
-
-      for (let guard = 0; guard < 32; guard++) {
-        const stepIdx = this._lastSched + 1;
-        const audioT  = now + (epochMs + stepIdx * dur * 1000 - worldNow) / 1000;
-        if (audioT > now + LOOK) break;
-        if (audioT < now - 0.05) { this._lastSched = stepIdx; continue; }
-        this._playStep(stepIdx % melLoop, audioT, Math.floor(stepIdx / melLoop));
-        drumPlayStep(stepIdx % drmLoop,   audioT, Math.floor(stepIdx / drmLoop));
-        this._lastSched = stepIdx;
-      }
-
-    } else {
-      const melDur = melLoop * dur;
-      const drmDur = drmLoop * dur;
-      while (this.nextTime < now + LOOK) {
-        const abs = this._absStep;
-        this._playStep(abs % melLoop, this.nextTime, Math.floor(abs / melLoop));
-        drumPlayStep(abs % drmLoop,   this.nextTime, Math.floor(abs / drmLoop));
-        this.nextTime += dur;
-        this._absStep++;
-        this.step = this._absStep % loopLen;
-      }
-      const e              = now - this.startTime;
-      this.displayStep     = e < 0 ? 0 : Math.floor((e % melDur) / dur) % melLoop;
-      this.drumDisplayStep = e < 0 ? 0 : Math.floor((e % drmDur) / dur) % drmLoop;
+  _stopScheduler() {
+    clearInterval(this._ivl);
+    this._ivl = null;
+    if (this._worker) {
+      this._worker.postMessage({ type: 'STOP' });
     }
   },
 
-  play(remoteEpochMs = null) {
-    clearInterval(this._ivl);
+  _setTransportAnchor(sharedMs, absStep, revision = this._transportRevision) {
+    this._anchorAbsStep = Math.max(0, absStep);
+    this._transportRevision = Math.max(this._transportRevision, revision);
+    setEpochMs(sharedMs);
+    this._lastSched = _schedulerLastForStep(this._anchorAbsStep);
+    this._absStep = Math.max(0, Math.floor(this._anchorAbsStep + STEP_EPS));
+    this.step = this._absStep;
+  },
+
+  _nextTransportRevision() {
+    this._transportRevision += 1;
+    return this._transportRevision;
+  },
+
+  transportStepFloatAt(sharedMs = sharedNow()) {
+    const anchor = Math.max(0, this._anchorAbsStep || 0);
+    if (epochMs === null) return anchor;
+    const durMs = seqStepDur() * 1000;
+    if (!(durMs > 0)) return anchor;
+    const elapsedMs = sharedMs - epochMs;
+    if (elapsedMs <= 0) return anchor;
+    return anchor + elapsedMs / durMs;
+  },
+
+  transportStepAt(sharedMs = sharedNow()) {
+    return Math.max(0, Math.floor(this.transportStepFloatAt(sharedMs) + STEP_EPS));
+  },
+
+  transportSharedMsForStep(absStep) {
+    if (epochMs === null) return sharedNow();
+    return epochMs + (absStep - this._anchorAbsStep) * seqStepDur() * 1000;
+  },
+
+  getTransportSnapshot(sharedMs = sharedNow()) {
+    const melLoop = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
+    const drmLoop = Math.max(1, Math.min(drumLoopLen, seqSteps()));
+    const absStepFloat = this.transportStepFloatAt(sharedMs);
+    const currentAbsStep = Math.max(0, Math.floor(absStepFloat + STEP_EPS));
+    const stepPhase = Math.max(0, Math.min(0.9999, absStepFloat - currentAbsStep));
+    const melLoopFloat = absStepFloat / melLoop;
+    const drmLoopFloat = absStepFloat / drmLoop;
+    return {
+      playing: this.playing,
+      absStepFloat,
+      currentAbsStep,
+      stepPhase,
+      currentStep: currentAbsStep % melLoop,
+      nextStep: (currentAbsStep + 1) % melLoop,
+      currentDrumStep: currentAbsStep % drmLoop,
+      nextDrumStep: (currentAbsStep + 1) % drmLoop,
+      loopCount: Math.floor(Math.max(0, melLoopFloat)),
+      drumLoopCount: Math.floor(Math.max(0, drmLoopFloat)),
+      loopPhase: ((melLoopFloat % 1) + 1) % 1,
+      drumLoopPhase: ((drmLoopFloat % 1) + 1) % 1,
+    };
+  },
+
+  buildTransportMessage(type, extra = {}) {
+    return {
+      type,
+      epochMs,
+      transportAbsStep: this._anchorAbsStep,
+      transportRevision: this._transportRevision,
+      masterBpm,
+      ..._syncGetFullState(),
+      ...extra,
+    };
+  },
+
+  setPendingPeerAnchor(anchor) {
+    this._pendingPeerAnchor = _parseTransportAnchor(anchor);
+  },
+
+  syncToRemoteAnchor(anchor) {
+    const parsed = _parseTransportAnchor(anchor);
+    if (!parsed) return false;
+    if (
+      parsed.revision < this._transportRevision &&
+      Math.abs(parsed.sharedMs - (epochMs ?? parsed.sharedMs)) < 1 &&
+      Math.abs(parsed.absStep - this._anchorAbsStep) < STEP_EPS
+    ) {
+      return false;
+    }
+    this._setTransportAnchor(parsed.sharedMs, parsed.absStep, parsed.revision);
+    this._barJoining = false;
+    this._corrTick = 24;
+    return true;
+  },
+
+  _tick() {
+    if (epochMs === null) return;
+
+    const melLoop = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
+    const drmLoop = Math.max(1, Math.min(drumLoopLen, seqSteps()));
+    const loopLen = Math.max(melLoop, drmLoop);
+    const worldNow = sharedNow();
+    const now = audio.actx.currentTime;
+    const stepFloat = this.transportStepFloatAt(worldNow);
+    const globalStep = Math.max(0, Math.floor(stepFloat + STEP_EPS));
+
+    this.displayStep = globalStep % melLoop;
+    this.drumDisplayStep = globalStep % drmLoop;
+    this.step = globalStep % loopLen;
+
+    if (this._corrTick > 0) {
+      this._corrTick--;
+      const targetLast = _schedulerLastForStep(stepFloat);
+      if (this._lastSched === undefined || this._lastSched > targetLast + 2) {
+        this._lastSched = targetLast;
+      }
+    }
+
+    if (this._barJoining) {
+      const nextBarStep = Math.ceil((globalStep + 1) / loopLen) * loopLen;
+      const nextBarAudioT = sharedTimeToAudioTime(audio.actx, this.transportSharedMsForStep(nextBarStep));
+      if (nextBarAudioT <= now + SCHED_LOOK_AHEAD) {
+        this._barJoining = false;
+        this._lastSched = nextBarStep - 1;
+      }
+      return;
+    }
+
+    if (this._lastSched === undefined) this._lastSched = _schedulerLastForStep(stepFloat);
+
+    for (let guard = 0; guard < 32; guard++) {
+      const stepIdx = this._lastSched + 1;
+      const audioT = sharedTimeToAudioTime(audio.actx, this.transportSharedMsForStep(stepIdx));
+      if (audioT > now + SCHED_LOOK_AHEAD) break;
+      if (audioT < now - 0.05) { this._lastSched = stepIdx; continue; }
+      this._playStep(stepIdx % melLoop, audioT, Math.floor(stepIdx / melLoop));
+      drumPlayStep(stepIdx % drmLoop, audioT, Math.floor(stepIdx / drmLoop));
+      this._lastSched = stepIdx;
+    }
+  },
+
+  play(remoteAnchor = null) {
+    this._stopScheduler();
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     _stopMidiPlayer();
     audio._resume();
     this.playing = true;
-    this.paused  = false;
+    this.paused = false;
 
-    if (remoteEpochMs !== null) {
-      setEpochMs(remoteEpochMs);
-      this._lastSched  = undefined;
-      this._pausedStep = -1;
-      this._absStep    = 0;
-    } else if (this._pausedStep >= 0) {
-      // Resume from pause — rebuild epoch so playback continues from the frozen step
-      setEpochMs(sharedNow() - this._pausedStep * seqStepDur() * 1000);
-      this._lastSched  = this._pausedStep - 1;
-      this._absStep    = this._pausedStep;
-      this._pausedStep = -1;
-      _syncSend({ type: 'PLAY', epochMs, masterBpm, ..._syncGetFullState() });
-    } else if (peerEpochMs !== null) {
-      setEpochMs(peerEpochMs);
+    const incoming = _parseTransportAnchor(remoteAnchor);
+    if (incoming) {
+      this._setTransportAnchor(incoming.sharedMs, incoming.absStep, incoming.revision);
+      this._barJoining = false;
+      this._pausedAbsStep = -1;
+    } else if (this._pausedAbsStep >= 0) {
+      const revision = this._nextTransportRevision();
+      this._setTransportAnchor(sharedNow() + START_LEAD_MS, this._pausedAbsStep, revision);
+      this._barJoining = false;
+      this._pausedAbsStep = -1;
+      _syncSend(this.buildTransportMessage('PLAY'));
+    } else if (this._pendingPeerAnchor || peerEpochMs !== null) {
+      const pending = this._pendingPeerAnchor || { sharedMs: peerEpochMs, absStep: 0, revision: this._transportRevision };
+      this._setTransportAnchor(pending.sharedMs, pending.absStep, pending.revision);
       this._barJoining = true;
-      this._lastSched  = undefined;
-      this._absStep    = 0;
-      _syncSend({ type: 'JOINED', epochMs, masterBpm, ..._syncGetFullState() });
+      _syncSend(this.buildTransportMessage('JOINED'));
+      this._pendingPeerAnchor = null;
     } else {
-      setEpochMs(sharedNow());
+      const revision = this._nextTransportRevision();
       setMasterBpm(SEQ.bpm);
-      this._lastSched = -1;
-      this._absStep   = 0;
-      _syncSend({ type: 'PLAY', epochMs, masterBpm, ..._syncGetFullState() });
+      this._setTransportAnchor(sharedNow() + START_LEAD_MS, 0, revision);
+      this._barJoining = false;
+      _syncSend(this.buildTransportMessage('PLAY'));
     }
 
-    this._ivl = setInterval(() => {
-      if (this.playing) { try { this._tick(); } catch(e) { console.error('[seq] _tick error:', e); } }
-    }, 20);
+    this._startScheduler();
     const raf = () => {
       if (!this.playing) return;
       drawSequencer();
@@ -182,12 +327,26 @@ export const seqEngine = {
     _syncPlayUI('playing');
   },
 
-  pause() {
-    if (!this.playing) return;
-    this.playing     = false;
-    this.paused      = true;
-    this._pausedStep = this.displayStep;
-    clearInterval(this._ivl);
+  pause(fromRemote = false, remoteAnchor = null) {
+    if (!this.playing && !fromRemote) return;
+    const parsed = _parseTransportAnchor(remoteAnchor);
+    if (parsed) {
+      this._setTransportAnchor(parsed.sharedMs, parsed.absStep, parsed.revision);
+    } else if (epochMs !== null) {
+      const pauseSharedMs = sharedNow();
+      const pauseAbsStep = this.transportStepFloatAt(pauseSharedMs);
+      const revision = fromRemote ? this._transportRevision : this._nextTransportRevision();
+      this._setTransportAnchor(pauseSharedMs, pauseAbsStep, revision);
+      if (!fromRemote) {
+        _syncSend(this.buildTransportMessage('PAUSE'));
+      }
+    }
+
+    this.playing = false;
+    this.paused = true;
+    this._pausedAbsStep = Math.max(0, this._anchorAbsStep);
+    this._barJoining = false;
+    this._stopScheduler();
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     _syncPlayUI('paused');
     scheduleDrawSequencer();
@@ -195,15 +354,18 @@ export const seqEngine = {
   },
 
   stop(fromRemote = false) {
-    this.playing      = false;
-    this.paused       = false;
-    this._pausedStep  = -1;
-    this._barJoining  = false;
-    this._lastSched   = undefined;
-    clearInterval(this._ivl);
+    this.playing = false;
+    this.paused = false;
+    this._pausedAbsStep = -1;
+    this._barJoining = false;
+    this._lastSched = undefined;
+    this._pendingPeerAnchor = null;
+    this._corrTick = 0;
+    this._stopScheduler();
     if (this._raf) cancelAnimationFrame(this._raf);
-    this.displayStep      = -1;
-    this.drumDisplayStep  = -1;
+    this.displayStep = -1;
+    this.drumDisplayStep = -1;
+    this._anchorAbsStep = 0;
     setEpochMs(null);
     setPeerEpochMs(null);
     if (!fromRemote) _syncSend({ type: 'STOP' });
@@ -212,15 +374,25 @@ export const seqEngine = {
     scheduleDrmDraw();
   },
 
-  rebase(fromRemote = false) {
+  rebase(fromRemote = false, remoteAnchor = null) {
     if (!this.playing) return;
-    if (!fromRemote) {
-      setEpochMs(sharedNow() - this.displayStep * seqStepDur() * 1000);
-      setMasterBpm(Math.round(SEQ.bpm / syncTempoRatio));
-      _syncSend({ type: 'REBASE', epochMs, masterBpm, rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
+    const parsed = _parseTransportAnchor(remoteAnchor);
+    if (parsed) {
+      this._setTransportAnchor(parsed.sharedMs, parsed.absStep, parsed.revision);
+    } else {
+      const anchorSharedMs = sharedNow();
+      const anchorAbsStep = this.transportStepFloatAt(anchorSharedMs);
+      const revision = fromRemote ? this._transportRevision : this._nextTransportRevision();
+      this._setTransportAnchor(anchorSharedMs, anchorAbsStep, revision);
     }
-    const globalStep = Math.max(0, Math.floor((sharedNow() - epochMs) / 1000 / seqStepDur()));
-    this._lastSched  = globalStep - 1;
+    if (!fromRemote) {
+      setMasterBpm(Math.round(SEQ.bpm / syncTempoRatio));
+      _syncSend(this.buildTransportMessage('REBASE', {
+        rhythmKey: SEQ.rhythmKey,
+        loopLen: SEQ.loopLen,
+      }));
+    }
+    this._corrTick = 12;
   },
 };
 
@@ -290,16 +462,11 @@ export function drawSequencer() {
 
   if (n === 0) return;
 
-  // Smooth loop phase (0–1) and absolute loop count — used for blink animation
+  // Smooth loop phase (0-1) and absolute loop count - used for blink animation
   const melLoop = Math.max(1, Math.min(SEQ.loopLen, steps));
-  let loopPhase = 0, loopCount = 0;
-  if (seqEngine.playing && epochMs !== null) {
-    const loopDurMs = melLoop * seqStepDur() * 1000;
-    const elapsed   = sharedNow() - epochMs;
-    const absLoop   = Math.max(0, elapsed) / loopDurMs;
-    loopCount = Math.floor(absLoop);
-    loopPhase = absLoop % 1;
-  }
+  const transport = seqEngine.playing ? seqEngine.getTransportSnapshot() : null;
+  const loopPhase = transport?.loopPhase ?? 0;
+  const loopCount = transport?.loopCount ?? 0;
 
   for (let row = 0; row < n; row++) {
     const si      = n - 1 - row;
@@ -403,9 +570,8 @@ export function drawSequencer() {
 // ── Loop-count helper (used by tap handlers) ────────────────────────
 
 function seqCurrentLoopCount() {
-  if (!seqEngine.playing || epochMs === null) return 0;
-  const melLoop = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
-  return Math.floor(Math.max(0, sharedNow() - epochMs) / (melLoop * seqStepDur() * 1000));
+  if (!seqEngine.playing) return 0;
+  return seqEngine.getTransportSnapshot().loopCount;
 }
 
 // ── Tap / long-press handler ─────────────────────────────────────────

@@ -27,8 +27,25 @@ const STRING_NAMES_TOP = ['e','B','G','D','A','E'];
 // ── Chord position voicing ──────────────────────────────────────────
 
 let chordPositionBoxes = [];
+let _chordPosCacheKey = '';
+let _fbCacheW = 0, _fbCacheH = 0, _fbCacheDpr = 0;
+new ResizeObserver(() => { _fbCacheW = 0; }).observe(fbCanvas.parentElement);
+
+let _fbDrawPending = false;
+export function scheduleDrawFretboard() {
+  if (_fbDrawPending) return;
+  _fbDrawPending = true;
+  requestAnimationFrame(() => {
+    _fbDrawPending = false;
+    drawFretboard();
+  });
+}
 
 function updateChordPositions() {
+  const cacheKey = [S.chordRoot, S.chordName, S.tuning].join('|');
+  if (cacheKey === _chordPosCacheKey) return;
+  _chordPosCacheKey = cacheKey;
+
   if (S.chordName === '— None —' || !CHORDS[S.chordName]) {
     chordPositionBoxes = [];
     S.fbPosFilter = -1;
@@ -139,9 +156,13 @@ export function drawFretboard() {
   const wrap = fbCanvas.parentElement;
   const DPR  = window.devicePixelRatio || 1;
   const W    = wrap.clientWidth, H = wrap.clientHeight;
-  fbCanvas.width  = W * DPR; fbCanvas.height = H * DPR;
-  fbCanvas.style.width = W + 'px'; fbCanvas.style.height = H + 'px';
-  fbCtx.scale(DPR, DPR);
+  if (W === 0 || H === 0) return;
+  if (W !== _fbCacheW || H !== _fbCacheH || DPR !== _fbCacheDpr) {
+    _fbCacheW = W; _fbCacheH = H; _fbCacheDpr = DPR;
+    fbCanvas.width  = W * DPR; fbCanvas.height = H * DPR;
+    fbCanvas.style.width = W + 'px'; fbCanvas.style.height = H + 'px';
+  }
+  fbCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   const openStrings   = [...GUITAR_TUNINGS[S.tuning]].reverse();
   const margin        = { left: 28, right: 14, top: 16, bottom: 16 };

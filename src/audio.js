@@ -179,7 +179,9 @@ export class AudioEngine {
       }
       osc.connect(env); osc.start(t); osc.stop(t + duration + 0.1);
     } else {
+      const nyquist = this.actx.sampleRate * 0.5;
       SYNTH.harmonics.slice(0, SYNTH.numHarmonics).forEach(([m, a, df]) => {
+        if (hz * m >= nyquist * 0.9) return;
         const osc = this.actx.createOscillator();
         const g   = this.actx.createGain();
         osc.type = 'sine';

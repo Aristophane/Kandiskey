@@ -11,9 +11,13 @@ import { tunerState } from './tuner.js';
 
 let _seqEngine       = { playing: false, displayStep: -1 };
 let _drawSequencer   = () => {};
+let _applyRootSelection = () => false;
+let _handleCenterInteraction = () => false;
 
 export function setSeqEngineRef(ref)          { _seqEngine     = ref; }
 export function setDrawSequencerCallback(fn)  { _drawSequencer = fn; }
+export function setRootSelectionCallback(fn)  { _applyRootSelection = fn; }
+export function setCenterInteractionCallback(fn) { _handleCenterInteraction = fn; }
 
 // ── DOM ─────────────────────────────────────────────────────────────
 
@@ -24,6 +28,8 @@ export const vizPanel = document.getElementById('viz-panel');
 // ── Helpers ─────────────────────────────────────────────────────────
 
 let chordPolyPx = [];
+let noteHitZones = [];
+let centerHitZone = null;
 export const CHORD_ZONE = 0.58;
 
 export function noteAngle(noteIndex, tempKey) {
@@ -54,6 +60,35 @@ function scaleNoteAngle(scaleIdx, noteIdx, tempKey) {
     return (c / 1200) * 2 * Math.PI - Math.PI / 2;
   }
   return noteAngle(noteIdx, tempKey);
+}
+
+function rememberNoteHitZone(noteIdx, x, y, dotR, kind) {
+  noteHitZones.push({
+    noteIdx,
+    x,
+    y,
+    r: Math.max(dotR + 10, 14),
+    kind,
+  });
+}
+
+function findNoteHitZone(x, y) {
+  let bestZone = null;
+  let bestDistSq = Infinity;
+  for (const zone of noteHitZones) {
+    const dx = x - zone.x;
+    const dy = y - zone.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq > zone.r * zone.r || distSq >= bestDistSq) continue;
+    bestZone = zone;
+    bestDistSq = distSq;
+  }
+  return bestZone;
+}
+
+function pointInCircle(x, y, zone) {
+  if (!zone) return false;
+  return Math.hypot(x - zone.x, y - zone.y) <= zone.r;
 }
 
 // ── Ripple animations ───────────────────────────────────────────────
@@ -91,6 +126,8 @@ function animStep() {
 
 export function draw() {
   const W = canvas.width, H = canvas.height;
+  noteHitZones = [];
+  centerHitZone = null;
   if (W < 110 || H < 110) { ctx.clearRect(0, 0, W, H); return; }
   const cx = W / 2, cy = H / 2;
   const R      = Math.min(W, H) * 0.355;
@@ -102,6 +139,7 @@ export function draw() {
   const scaleNotes = getScaleNotes();
   const chord      = CHORDS[S.chordName];
   const chordNotes = chord ? chord.map(d => (d % 12 + S.chordRoot) % 12) : [];
+  const transport = _seqEngine.getTransportSnapshot?.();
 
   ctx.clearRect(0, 0, W, H);
 
@@ -198,6 +236,7 @@ export function draw() {
     const a       = noteAngle(i, temp);
     const x       = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
     const inChord = chordNotes.includes(i);
+    rememberNoteHitZone(i, x, y, inChord ? 5.5 : 4, 'chromatic');
     ctx.beginPath(); ctx.arc(x, y, inChord ? 5.5 : 4, 0, Math.PI * 2);
     let fillStyle = 'rgba(255,255,255,0.13)';
     if (inChord) {
@@ -224,6 +263,7 @@ export function draw() {
     const inChord = chordNotes.includes(noteIdx);
     const isNeutral = neutralSet.has(si);
     const dotR    = isRoot ? 10 : 8;
+    rememberNoteHitZone(noteIdx, x, y, dotR, 'scale');
 
     let col, glowCol, glowR;
     if (inChord) {
@@ -300,20 +340,36 @@ export function draw() {
     });
   }
 
-  // Sequencer active step ring
-  if (_seqEngine.playing && _seqEngine.displayStep >= 0) {
-    const step = _seqEngine.displayStep;
+  // Sequencer active step ring + next-step ghost lighting
+  if (transport?.playing && transport.currentStep >= 0) {
+    const step = transport.currentStep;
+    const nextStep = transport.nextStep;
+    const phase = transport.stepPhase;
     for (let si = 0; si < scale.length; si++) {
-      if (!SEQ.grid[`${si}_${step}`]) continue;
+      const isCurrent = !!SEQ.grid[`${si}_${step}`];
+      const isNext = !!SEQ.grid[`${si}_${nextStep}`];
+      if (!isCurrent && !isNext) continue;
       if (si >= scaleAngles.length) continue;
       const a = scaleAngles[si];
       const x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
-      ctx.beginPath(); ctx.arc(x, y, 19, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(56,189,248,0.92)';
-      ctx.lineWidth = 2.5; ctx.setLineDash([]); ctx.stroke();
-      const pg = ctx.createRadialGradient(x, y, 0, x, y, 30);
-      pg.addColorStop(0, 'rgba(56,189,248,0.32)'); pg.addColorStop(1, 'transparent');
-      ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fillStyle = pg; ctx.fill();
+      if (isCurrent) {
+        ctx.beginPath(); ctx.arc(x, y, 19, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(56,189,248,${(0.45 + (1 - phase) * 0.47).toFixed(2)})`;
+        ctx.lineWidth = 2.5; ctx.setLineDash([]); ctx.stroke();
+        const pg = ctx.createRadialGradient(x, y, 0, x, y, 30);
+        pg.addColorStop(0, `rgba(56,189,248,${(0.16 + (1 - phase) * 0.22).toFixed(2)})`);
+        pg.addColorStop(1, 'transparent');
+        ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fillStyle = pg; ctx.fill();
+      }
+      if (isNext && phase > 0.02) {
+        ctx.beginPath(); ctx.arc(x, y, 23, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(245,158,11,${(phase * 0.32).toFixed(2)})`;
+        ctx.lineWidth = 1.5; ctx.stroke();
+        const ng = ctx.createRadialGradient(x, y, 0, x, y, 34);
+        ng.addColorStop(0, `rgba(245,158,11,${(phase * 0.18).toFixed(2)})`);
+        ng.addColorStop(1, 'transparent');
+        ctx.beginPath(); ctx.arc(x, y, 34, 0, Math.PI * 2); ctx.fillStyle = ng; ctx.fill();
+      }
     }
   }
 
@@ -384,18 +440,39 @@ export function draw() {
     }
   } else {
     // Center labels
+    const rootFontSize = Math.round(Math.max(28, Math.min(46, R * 0.26)));
+    const scaleFontSize = Math.round(Math.max(12, Math.min(18, R * 0.115)));
+    const chordFontSize = Math.round(Math.max(10, Math.min(14, R * 0.08)));
+    const scaleLabel = S.scaleName.replace(/\s*\(.*\)/, '').trim();
+    const chordLabel = CHORDS[S.chordName] !== null ? `${CHROMATIC[S.chordRoot]} ${S.chordName}` : '';
+    const centerActionAvailable = !!_handleCenterInteraction('available');
+    centerHitZone = {
+      x: cx,
+      y: cy + (chordLabel ? 4 : 0),
+      r: Math.max(R * (chordLabel ? 0.24 : 0.2), 32),
+    };
+    if (centerActionAvailable) {
+      ctx.beginPath();
+      ctx.arc(centerHitZone.x, centerHitZone.y, centerHitZone.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.02)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(centerHitZone.x, centerHitZone.y, centerHitZone.r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(245,158,11,0.14)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold 19px system-ui'; ctx.fillStyle = '#f59e0b';
-    ctx.fillText(CHROMATIC[S.root], cx, cy - 9);
-    ctx.font = '9.5px system-ui'; ctx.fillStyle = 'rgba(255,255,255,0.32)';
-    ctx.fillText(S.scaleName.replace(/\s*\(.*\)/, '').trim(), cx, cy + 9);
+    ctx.font = `bold ${rootFontSize}px system-ui`; ctx.fillStyle = '#f59e0b';
+    ctx.fillText(CHROMATIC[S.root], cx, cy - rootFontSize * 0.14);
+    ctx.font = `${scaleFontSize}px system-ui`; ctx.fillStyle = 'rgba(255,255,255,0.46)';
+    ctx.fillText(scaleLabel, cx, cy + scaleFontSize * 1.08);
     if (S.chordName !== '— None —') {
-      ctx.font = '8.5px system-ui'; ctx.fillStyle = 'rgba(52,211,153,0.55)';
-      ctx.fillText(CHROMATIC[S.chordRoot] + ' ' + S.chordName, cx, cy + 23);
+      ctx.font = `${chordFontSize}px system-ui`; ctx.fillStyle = 'rgba(52,211,153,0.62)';
+      ctx.fillText(chordLabel, cx, cy + scaleFontSize * 2.1 + chordFontSize * 0.2);
     }
   }
 
-  if (document.getElementById('seq-wrap').classList.contains('open')) _drawSequencer();
 }
 
 // ── Canvas interaction ──────────────────────────────────────────────
@@ -431,8 +508,20 @@ export function playChordNow() {
 }
 
 canvas.addEventListener('click', e => {
-  if (_seqEngine.playing) return;
   const { x, y } = canvasXY(e);
+  const noteZone = findNoteHitZone(x, y);
+  if (noteZone) {
+    if (_applyRootSelection(noteZone.noteIdx) !== false) {
+      const rippleColor = noteZone.kind === 'scale' ? 'rgba(245,158,11,0.72)' : 'rgba(255,255,255,0.42)';
+      addRipple(noteZone.x, noteZone.y, rippleColor, Math.max(noteZone.r * 1.85, 24));
+    }
+    return;
+  }
+  if (pointInCircle(x, y, centerHitZone) && _handleCenterInteraction('activate')) {
+    addRipple(centerHitZone.x, centerHitZone.y, 'rgba(245,158,11,0.55)', Math.max(centerHitZone.r * 1.35, 36));
+    return;
+  }
+  if (_seqEngine.playing) return;
   const W = canvas.width, H = canvas.height;
   const cx = W / 2, cy = H / 2;
   const R    = Math.min(W, H) * 0.355;
@@ -449,11 +538,23 @@ canvas.addEventListener('click', e => {
 
 canvas.addEventListener('mousemove', e => {
   const { x, y } = canvasXY(e);
+  const noteZone = findNoteHitZone(x, y);
+  if (noteZone) {
+    canvas.style.cursor = 'pointer';
+    canvas.title = `Click · set root to ${CHROMATIC[noteZone.noteIdx]}`;
+    return;
+  }
+  if (pointInCircle(x, y, centerHitZone) && _handleCenterInteraction('available')) {
+    canvas.style.cursor = 'pointer';
+    canvas.title = _handleCenterInteraction('label') || 'Click - open scale settings';
+    return;
+  }
   const cx   = canvas.width  / 2, cy = canvas.height / 2;
   const R    = Math.min(canvas.width, canvas.height) * 0.355;
   const dist = Math.hypot(x - cx, y - cy);
   const chordActive = CHORDS[S.chordName] !== null;
   if (dist > R * 1.15) { canvas.style.cursor = 'default'; canvas.title = ''; return; }
+  if (_seqEngine.playing) { canvas.style.cursor = 'default'; canvas.title = ''; return; }
   canvas.style.cursor = 'pointer';
   canvas.title = (chordActive && dist < R * CHORD_ZONE) ? 'Click · play chord' : 'Click · play arpeggio';
 });

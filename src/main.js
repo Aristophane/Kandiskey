@@ -2,7 +2,7 @@ import './style.css';
 import * as Sync from './sync.js';
 import { startTuner, stopTuner, tunerState } from './tuner.js';
 
-import { CHROMATIC, TEMPERAMENTS, SCALE_FAMILIES, CHORDS, GUITAR_TUNINGS, RHYTHMS, PRESETS, DEGREE_NAMES } from './data.js';
+import { CHROMATIC, TEMPERAMENTS, SCALE_FAMILIES, CHORDS, GUITAR_TUNINGS, RHYTHMS, PRESETS, DEGREE_NAMES, MAQAM_CENTS } from './data.js';
 import {
   S, SEQ, SYNTH, getScale, getScaleNotes, seqSteps, seqR, seqStepDur,
   epochMs, peerEpochMs, masterBpm, syncTempoRatio, drumLoopLen,
@@ -30,10 +30,13 @@ import {
   draw, addRipple, canvas, ctx, vizPanel, playChordNow,
   setSeqEngineRef as vizSetSeqEngineRef,
   setDrawSequencerCallback,
+  setCenterInteractionCallback,
+  setRootSelectionCallback,
   noteAngle, canvasXY, pointInPoly, CHORD_ZONE,
 } from './visualizer.js';
 import {
   drawFretboard,
+  scheduleDrawFretboard,
   setSeqEngineRef as fbSetSeqEngineRef,
   setGetSeqActiveFreqsCallback,
 } from './fretboard.js';
@@ -50,10 +53,19 @@ seqSetSyncSend(msg => Sync.send(msg));
 setSyncGetFullState(syncGetFullState);
 setSyncPlayUI(syncPlayUI);
 setStopMidiPlayer(stopActiveMidiPlayer);
-seqSetDrawFretboard(drawFretboard);
+seqSetDrawFretboard(scheduleDrawFretboard);
 
 vizSetSeqEngineRef(seqEngine);
 setDrawSequencerCallback(drawSequencer);
+setRootSelectionCallback(noteIdx => applyRootSelection(noteIdx));
+setCenterInteractionCallback(mode => {
+  if (!isScaleSidebarHidden()) {
+    return mode === 'label' ? '' : false;
+  }
+  if (mode === 'label') return 'Click - open scale settings';
+  if (mode === 'available') return true;
+  return openScaleSettingsPicker();
+});
 
 fbSetSeqEngineRef(seqEngine);
 setGetSeqActiveFreqsCallback(getSeqActiveFreqs);
@@ -62,7 +74,10 @@ drumSetSeqEngineRef(seqEngine);
 drumSetSyncSend(msg => Sync.send(msg));
 
 midiSetDraw(draw);
-midiSetDrawFretboard(drawFretboard);
+midiSetDrawFretboard(scheduleDrawFretboard);
+
+let syncScalePickerUi = () => {};
+let openScaleSettingsPicker = () => false;
 
 // ── applyPeerBpm ────────────────────────────────────────────────────
 
@@ -107,7 +122,123 @@ function findRelativeMode(newRoot) {
   return null;
 }
 
-function buildNoteGrid(id, stateKey) {
+function populateScaleSelect(id) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = '';
+  const family = SCALE_FAMILIES[S.family];
+  if (!family) return;
+  const scaleNames = Object.keys(family.scales);
+  if (!scaleNames.length) return;
+  if (!family.scales[S.scaleName]) S.scaleName = scaleNames[0];
+  scaleNames.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (name === S.scaleName) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function refreshRootUi() {
+  refreshNoteGrid('root-grid', 'root');
+  const mobRootLbl = document.getElementById('mob-root-lbl');
+  if (mobRootLbl) mobRootLbl.textContent = CHROMATIC[S.root];
+}
+
+function applyRootSelection(noteIdx, { preview = true } = {}) {
+  const inScale = getScaleNotes().includes(noteIdx);
+  const mode = inScale ? findRelativeMode(noteIdx) : null;
+  if (inScale && !mode) return false;
+
+  S.root = noteIdx;
+  if (mode) {
+    S.family = mode.family;
+    S.scaleName = mode.scaleName;
+    const familySel = document.getElementById('sel-family');
+    if (familySel) familySel.value = S.family;
+    const mobFamilySel = document.getElementById('mob-family-sel');
+    if (mobFamilySel) mobFamilySel.value = S.family;
+    buildScaleSelect();
+    populateScaleSelect('mob-scale-sel');
+    const scaleSel = document.getElementById('sel-scale');
+    if (scaleSel) scaleSel.value = S.scaleName;
+    const mobScaleSel = document.getElementById('mob-scale-sel');
+    if (mobScaleSel) mobScaleSel.value = S.scaleName;
+  }
+
+  refreshRootUi();
+  updateInfo();
+  draw();
+  if (S.fretboardOpen) scheduleDrawFretboard();
+  syncScalePickerUi();
+  if (preview && !seqEngine.playing) audio.playArpeggio(getScaleFreqs());
+  return true;
+}
+
+function isScaleSidebarHidden() {
+  const panel = document.getElementById('slide-scale');
+  return !panel || getComputedStyle(panel).display === 'none';
+}
+
+function applyTemperamentSelection(tempKey) {
+  if (!TEMPERAMENTS[tempKey]) return false;
+  S.temp = tempKey;
+  const sel = document.getElementById('sel-temperament');
+  if (sel) sel.value = tempKey;
+  const mobSel = document.getElementById('mob-temp-sel');
+  if (mobSel) mobSel.value = tempKey;
+  const desc = document.getElementById('temp-desc');
+  if (desc) desc.textContent = TEMPERAMENTS[S.temp].desc;
+  updateInfo();
+  draw();
+  if (S.fretboardOpen) scheduleDrawFretboard();
+  syncScalePickerUi();
+  return true;
+}
+
+function applyScaleFamilySelection(familyKey) {
+  if (!SCALE_FAMILIES[familyKey]) return false;
+  S.family = familyKey;
+  const sel = document.getElementById('sel-family');
+  if (sel) sel.value = familyKey;
+  const mobSel = document.getElementById('mob-family-sel');
+  if (mobSel) mobSel.value = familyKey;
+  buildScaleSelect();
+  populateScaleSelect('mob-scale-sel');
+  const scaleSel = document.getElementById('sel-scale');
+  if (scaleSel) scaleSel.value = S.scaleName;
+  const mobScaleSel = document.getElementById('mob-scale-sel');
+  if (mobScaleSel) mobScaleSel.value = S.scaleName;
+  updateInfo();
+  draw();
+  if (S.fretboardOpen) scheduleDrawFretboard();
+  refreshNoteGrid('root-grid', 'root');
+  syncScalePickerUi();
+  return true;
+}
+
+function applyScaleNameSelection(scaleName) {
+  const family = SCALE_FAMILIES[S.family];
+  if (!family) return false;
+  if (!family.scales[scaleName]) {
+    scaleName = Object.keys(family.scales)[0];
+  }
+  if (!scaleName) return false;
+  S.scaleName = scaleName;
+  const sel = document.getElementById('sel-scale');
+  if (sel) sel.value = scaleName;
+  const mobSel = document.getElementById('mob-scale-sel');
+  if (mobSel) mobSel.value = scaleName;
+  updateInfo();
+  draw();
+  if (S.fretboardOpen) scheduleDrawFretboard();
+  refreshNoteGrid('root-grid', 'root');
+  syncScalePickerUi();
+  return true;
+}
+
+function legacyBuildNoteGrid(id, stateKey) {
   const el = document.getElementById(id);
   CHROMATIC.forEach((n, i) => {
     const btn = document.createElement('button');
@@ -148,6 +279,27 @@ function buildNoteGrid(id, stateKey) {
   refreshNoteGrid(id, stateKey);
 }
 
+function buildNoteGrid(id, stateKey) {
+  const el = document.getElementById(id);
+  CHROMATIC.forEach((n, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'note-btn';
+    btn.textContent = n;
+    btn.addEventListener('click', () => {
+      if (stateKey === 'root') {
+        applyRootSelection(i);
+        return;
+      }
+      S[stateKey] = i;
+      refreshNoteGrid(id, stateKey);
+      updateInfo(); draw(); drawFretboard();
+      if (!seqEngine.playing && stateKey === 'chordRoot' && CHORDS[S.chordName]) playChordNow();
+    });
+    el.appendChild(btn);
+  });
+  refreshNoteGrid(id, stateKey);
+}
+
 function refreshNoteGrid(id, stateKey) {
   const cls = stateKey === 'chordRoot' ? 'active-chord' : 'active';
   const scaleNotes = stateKey === 'root' ? getScaleNotes() : null;
@@ -166,14 +318,8 @@ function buildTemperamentSelect() {
     if (k === S.temp) opt.selected = true;
     sel.appendChild(opt);
   });
-  sel.addEventListener('change', () => {
-    S.temp = sel.value;
-    document.getElementById('temp-desc').textContent = TEMPERAMENTS[S.temp].desc;
-    const ms = document.getElementById('mob-temp-sel');
-    if (ms) ms.value = S.temp;
-    updateInfo(); draw(); drawFretboard();
-  });
-  document.getElementById('temp-desc').textContent = TEMPERAMENTS[S.temp].desc;
+  sel.addEventListener('change', () => applyTemperamentSelection(sel.value));
+  applyTemperamentSelection(S.temp);
 }
 
 function buildFamilySelect() {
@@ -184,29 +330,11 @@ function buildFamilySelect() {
     if (k === S.family) opt.selected = true;
     sel.appendChild(opt);
   });
-  sel.addEventListener('change', () => {
-    S.family = sel.value;
-    buildScaleSelect();
-    updateInfo(); draw(); drawFretboard();
-    refreshNoteGrid('root-grid', 'root');
-  });
+  sel.addEventListener('change', () => applyScaleFamilySelection(sel.value));
 }
 
 function buildScaleSelect() {
-  const sel = document.getElementById('sel-scale');
-  sel.innerHTML = '';
-  const f = SCALE_FAMILIES[S.family];
-  if (!f) return;
-  Object.keys(f.scales).forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name;
-    if (name === S.scaleName) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  if (!f.scales[S.scaleName]) {
-    S.scaleName = Object.keys(f.scales)[0];
-    sel.value = S.scaleName;
-  }
+  populateScaleSelect('sel-scale');
 }
 
 function buildChordTypeGrid() {
@@ -272,8 +400,7 @@ function getChordPositionBoxesLen() {
 }
 
 function getScaleFreqs() {
-  const C4 = 261.62556, rootHz = C4 * Math.pow(2, S.root / 12);
-  const { MAQAM_CENTS } = await_import_maqam_cents();
+  const C4 = 261.62556, rootHz = C4 * Math.pow(2, S.root / 12) * Math.pow(2, S.octave - 4);
   if (S.family === 'arabic' && MAQAM_CENTS[S.scaleName]) {
     const freqs = MAQAM_CENTS[S.scaleName].map(c => rootHz * Math.pow(2, c / 1200));
     freqs.push(rootHz * 2);
@@ -286,7 +413,6 @@ function getScaleFreqs() {
 }
 
 // Avoid re-importing MAQAM_CENTS — already in visualizer.js. Use a closure.
-import { MAQAM_CENTS } from './data.js';
 function _getScaleFreqs() {
   const C4 = 261.62556, rootHz = C4 * Math.pow(2, S.root / 12) * Math.pow(2, S.octave - 4);
   if (S.family === 'arabic' && MAQAM_CENTS[S.scaleName]) {
@@ -583,13 +709,47 @@ roTonnetz.observe(document.getElementById('solo-wrap'));
 
 // ── HEADER BUTTONS ───────────────────────────────────────────────────
 
-document.getElementById('btn-audio').addEventListener('click', function () {
-  audio.enabled = !audio.enabled;
-  this.classList.toggle('active-audio', audio.enabled);
-  this.innerHTML = audio.enabled
-    ? '<span class="hdr-icon">🎧</span><span class="btn-text"> Audio</span>'
-    : '<span class="hdr-icon">🔇</span><span class="btn-text"> Muted</span>';
+function syncAudioUi() {
+  const hdrBtn = document.getElementById('btn-audio');
+  if (hdrBtn) {
+    hdrBtn.classList.toggle('active-audio', audio.enabled);
+    hdrBtn.innerHTML = audio.enabled
+      ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg><span class="btn-text"> Audio</span>'
+      : '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-muted"></use></svg><span class="btn-text"> Muted</span>';
+  }
+
+  const vizBtn = document.getElementById('btn-viz-mute');
+  if (vizBtn) {
+    vizBtn.classList.toggle('active-audio', audio.enabled);
+    vizBtn.classList.toggle('muted', !audio.enabled);
+    vizBtn.title = audio.enabled ? 'Mute audio' : 'Unmute audio';
+    vizBtn.setAttribute('aria-label', audio.enabled ? 'Mute audio' : 'Unmute audio');
+    vizBtn.innerHTML = audio.enabled
+      ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>'
+      : '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-muted"></use></svg>';
+  }
+}
+
+function setAudioEnabled(enabled) {
+  audio.enabled = !!enabled;
+  syncAudioUi();
+}
+
+function toggleAudioEnabled() {
+  setAudioEnabled(!audio.enabled);
+}
+
+function syncMixerUi(open) {
+  document.getElementById('btn-mixer')?.classList.toggle('active-mixer', open);
+  document.getElementById('btn-viz-mixer')?.classList.toggle('active-mixer', open);
+}
+
+document.getElementById('btn-audio')?.addEventListener('click', () => toggleAudioEnabled());
+document.getElementById('btn-viz-mute')?.addEventListener('click', () => toggleAudioEnabled());
+document.getElementById('btn-viz-mixer')?.addEventListener('click', () => {
+  document.getElementById('btn-mixer')?.click();
 });
+syncAudioUi();
 
 function updateOctaveLabel() {
   document.getElementById('oct-lbl').textContent = 'Oct ' + S.octave;
@@ -614,12 +774,11 @@ document.getElementById('btn-seq-synth').addEventListener('click', function () {
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-synth', open);
   this.innerHTML = `<svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Sound ${open ? '▴' : '▾'}`;
+  if (open) scheduleWaveCanvasAnimation();
 });
 
 document.getElementById('sel-scale').addEventListener('change', function () {
-  S.scaleName = this.value;
-  updateInfo(); draw(); drawFretboard();
-  refreshNoteGrid('root-grid', 'root');
+  applyScaleNameSelection(this.value);
 });
 
 ['tog-cents', 'tog-labels'].forEach(id => {
@@ -728,6 +887,7 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
     document.getElementById('seq-wave-bar').style.display = mode === 'wave' ? 'flex' : 'none';
     document.getElementById('seq-sample-bar').style.display = mode === 'sample' ? 'flex' : 'none';
     if (mode === 'wave') requestAnimationFrame(renderWaveDraw);
+    scheduleWaveCanvasAnimation();
   }
 
   ['synth', 'wave', 'sample'].forEach(m =>
@@ -764,14 +924,27 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
     waveApplyTimer = setTimeout(() => {
       audio._resume();
       if (!audio.actx) return;
+      const normalized = new Float32Array(WN);
+      let mean = 0;
+      for (let i = 0; i < WN; i++) mean += waveSamples[i];
+      mean /= WN;
+      let peak = 0;
+      for (let i = 0; i < WN; i++) {
+        const v = waveSamples[i] - mean;
+        normalized[i] = v;
+        peak = Math.max(peak, Math.abs(v));
+      }
+      if (peak > 0.0001) {
+        for (let i = 0; i < WN; i++) normalized[i] /= peak;
+      }
       const np = 64;
       const real = new Float32Array(np + 1), imag = new Float32Array(np + 1);
       for (let k = 1; k <= np; k++) {
         let re = 0, im = 0;
         for (let n = 0; n < WN; n++) {
           const a = (2 * Math.PI * k * n) / WN;
-          re += waveSamples[n] * Math.cos(a);
-          im -= waveSamples[n] * Math.sin(a);
+          re += normalized[n] * Math.cos(a);
+          im -= normalized[n] * Math.sin(a);
         }
         real[k] = (2 * re) / WN; imag[k] = (2 * im) / WN;
       }
@@ -977,6 +1150,152 @@ document.getElementById('drum-loop-len').addEventListener('input', function () {
   scroll.addEventListener('scroll', updateSelection);
 })();
 
+(function () {
+  const overlay = document.getElementById('scale-picker-overlay');
+  const closeBtn = document.getElementById('scale-picker-close');
+  const summary = document.getElementById('scale-picker-summary');
+  const tempScroll = document.getElementById('scale-picker-temp');
+  const familyScroll = document.getElementById('scale-picker-family');
+  const scaleScroll = document.getElementById('scale-picker-scale');
+  if (!overlay || !closeBtn || !summary || !tempScroll || !familyScroll || !scaleScroll) return;
+
+  const ITEM_H = 54;
+  const tempKeys = Object.keys(TEMPERAMENTS);
+  const familyKeys = Object.keys(SCALE_FAMILIES);
+  let scaleKeys = [];
+  const timers = { temp: null, family: null, scale: null };
+
+  const shortTemperamentName = key => TEMPERAMENTS[key]?.name
+    ?.replace('Equal (12-TET)', 'Equal')
+    .replace('Just Intonation (5-limit)', 'Just')
+    .replace('Pythagorean', 'Pythag.')
+    .replace('Quarter-comma ', '')
+    .replace('Meantone', 'Meantone')
+    .replace('Werckmeister III', 'Werk. III') || key;
+  const shortFamilyName = key => SCALE_FAMILIES[key]?.name
+    ?.replace('Western Modes', 'Western')
+    .replace('Pentatonic & Blues', 'Penta.')
+    .replace('Arabic Maqamat', 'Arabic')
+    .replace('Indian Ragas', 'Indian') || key;
+  const shortScaleName = key => key.replace(/\s*\(.*\)/, '').trim();
+
+  function renderWheel(scrollEl, values, labelFn) {
+    scrollEl.innerHTML = '';
+    values.forEach(value => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'scale-picker-item';
+      item.dataset.value = value;
+      item.textContent = labelFn(value);
+      scrollEl.appendChild(item);
+    });
+  }
+
+  function currentWheelValue(scrollEl, values) {
+    if (!values.length) return null;
+    const idx = Math.max(0, Math.min(values.length - 1, Math.round(scrollEl.scrollTop / ITEM_H)));
+    return values[idx];
+  }
+
+  function highlightWheel(scrollEl, value) {
+    scrollEl.querySelectorAll('.scale-picker-item').forEach(item => {
+      item.classList.toggle('selected', item.dataset.value === value);
+    });
+  }
+
+  function syncWheel(scrollEl, values, value) {
+    const idx = Math.max(0, values.indexOf(value));
+    scrollEl.scrollTop = idx * ITEM_H;
+    highlightWheel(scrollEl, values[idx] ?? value);
+  }
+
+  function syncSummary() {
+    const familyName = SCALE_FAMILIES[S.family]?.name || S.family;
+    summary.innerHTML = `<strong>${CHROMATIC[S.root]} ${S.scaleName}</strong><br>${shortTemperamentName(S.temp)} - ${familyName}`;
+  }
+
+  function rebuildScaleWheel() {
+    clearTimeout(timers.scale);
+    scaleKeys = Object.keys(SCALE_FAMILIES[S.family]?.scales || {});
+    renderWheel(scaleScroll, scaleKeys, shortScaleName);
+    syncWheel(scaleScroll, scaleKeys, S.scaleName);
+  }
+
+  function currentStateFor(kind) {
+    if (kind === 'temp') return S.temp;
+    if (kind === 'family') return S.family;
+    return S.scaleName;
+  }
+
+  function commitWheel(kind, value) {
+    if (!value || value === currentStateFor(kind)) return;
+    if (kind === 'temp') applyTemperamentSelection(value);
+    else if (kind === 'family') {
+      applyScaleFamilySelection(value);
+      rebuildScaleWheel();
+    } else {
+      applyScaleNameSelection(value);
+    }
+    syncSummary();
+  }
+
+  function scheduleWheelCommit(kind, scrollEl, values) {
+    const value = currentWheelValue(scrollEl, values);
+    highlightWheel(scrollEl, value);
+    clearTimeout(timers[kind]);
+    timers[kind] = setTimeout(() => commitWheel(kind, value), 90);
+  }
+
+  function wireWheel(kind, scrollEl, valuesRef, labelFn) {
+    scrollEl.addEventListener('scroll', () => scheduleWheelCommit(kind, scrollEl, valuesRef()));
+    scrollEl.addEventListener('click', e => {
+      const item = e.target.closest('.scale-picker-item');
+      if (!item) return;
+      const values = valuesRef();
+      syncWheel(scrollEl, values, item.dataset.value);
+      commitWheel(kind, item.dataset.value);
+    });
+    renderWheel(scrollEl, valuesRef(), labelFn);
+  }
+
+  wireWheel('temp', tempScroll, () => tempKeys, shortTemperamentName);
+  wireWheel('family', familyScroll, () => familyKeys, shortFamilyName);
+  wireWheel('scale', scaleScroll, () => scaleKeys, shortScaleName);
+
+  function syncFromState() {
+    syncWheel(tempScroll, tempKeys, S.temp);
+    syncWheel(familyScroll, familyKeys, S.family);
+    rebuildScaleWheel();
+    syncSummary();
+  }
+
+  function closePicker() {
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  openScaleSettingsPicker = () => {
+    if (!isScaleSidebarHidden()) return false;
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(syncFromState);
+    return true;
+  };
+  syncScalePickerUi = () => {
+    if (overlay.style.display !== 'none') requestAnimationFrame(syncFromState);
+    else syncSummary();
+  };
+
+  closeBtn.addEventListener('click', closePicker);
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay || e.target.classList.contains('scale-picker-backdrop')) closePicker();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && overlay.style.display !== 'none') closePicker();
+  });
+  syncFromState();
+})();
+
 document.getElementById('seq-bpm').addEventListener('input', function () {
   document.getElementById('seq-bpm-val').textContent = this.value;
 });
@@ -1050,6 +1369,7 @@ document.addEventListener('keydown', e => {
 
 const WAVE_TYPES = ['sine', 'triangle', 'square', 'sawtooth'];
 let _waveT = 0;
+let _waveAnimRaf = 0;
 
 function drawWaveCanvas(cvs, type, t) {
   const wctx = cvs.getContext('2d');
@@ -1079,16 +1399,36 @@ function drawWaveCanvas(cvs, type, t) {
   wctx.stroke();
 }
 
-(function waveAnimLoop() {
-  _waveT += 0.025;
-  WAVE_TYPES.forEach(type => {
+function _waveCanvasVisible(cvs) {
+  return !!cvs && cvs.offsetParent !== null;
+}
+
+function _hasVisibleWaveCanvas() {
+  return WAVE_TYPES.some(type => {
     const cvs = document.getElementById('wave-' + type);
-    if (cvs) drawWaveCanvas(cvs, type, _waveT);
     const scvs = document.getElementById('solo-wave-' + type);
-    if (scvs) drawWaveCanvas(scvs, type, _waveT);
+    return _waveCanvasVisible(cvs) || _waveCanvasVisible(scvs);
   });
-  requestAnimationFrame(waveAnimLoop);
-})();
+}
+
+function scheduleWaveCanvasAnimation() {
+  if (_waveAnimRaf) return;
+  const step = () => {
+    _waveAnimRaf = 0;
+    if (!_hasVisibleWaveCanvas()) return;
+    _waveT += 0.025;
+    WAVE_TYPES.forEach(type => {
+      const cvs = document.getElementById('wave-' + type);
+      if (_waveCanvasVisible(cvs)) drawWaveCanvas(cvs, type, _waveT);
+      const scvs = document.getElementById('solo-wave-' + type);
+      if (_waveCanvasVisible(scvs)) drawWaveCanvas(scvs, type, _waveT);
+    });
+    _waveAnimRaf = requestAnimationFrame(step);
+  };
+  _waveAnimRaf = requestAnimationFrame(step);
+}
+
+scheduleWaveCanvasAnimation();
 
 document.querySelectorAll('.wave-cvs').forEach(cvs => {
   cvs.addEventListener('click', () => {
@@ -1101,6 +1441,7 @@ document.querySelectorAll('.wave-cvs').forEach(cvs => {
     document.querySelectorAll('.wave-cvs').forEach(c => c.classList.remove('active'));
     cvs.classList.add('active');
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    scheduleWaveCanvasAnimation();
   });
 });
 
@@ -1109,6 +1450,7 @@ document.querySelectorAll('.solo-wave-cvs').forEach(cvs => {
     SOLO_SYNTH.waveform = cvs.dataset.wave;
     document.querySelectorAll('.solo-wave-cvs').forEach(c => c.classList.remove('active'));
     cvs.classList.add('active');
+    scheduleWaveCanvasAnimation();
   });
 });
 
@@ -1153,7 +1495,8 @@ document.getElementById('btn-solo').addEventListener('click', function () {
 });
 
 document.getElementById('btn-solo-synth').addEventListener('click', () => {
-  document.getElementById('solo-synth-wrap').classList.toggle('open');
+  const open = document.getElementById('solo-synth-wrap').classList.toggle('open');
+  if (open) scheduleWaveCanvasAnimation();
 });
 
 document.getElementById('solo-mode-chords').addEventListener('click', function () {
@@ -1198,6 +1541,7 @@ document.getElementById('solo-oct-up').addEventListener('click', () => { setSolo
 
   document.getElementById('solo-synth-wrap')?.addEventListener('transitionend', () => {
     if (document.getElementById('solo-synth-wrap').classList.contains('open')) {
+      scheduleWaveCanvasAnimation();
       document.querySelectorAll('#solo-synth-wrap .syn-vis-ctrl').forEach(cvs => {
         const rect = cvs.getBoundingClientRect();
         if (rect.width > 0) cvs.width = Math.round(rect.width);
@@ -1307,7 +1651,7 @@ document.getElementById('btn-drum-clear').addEventListener('click', () => {
 document.getElementById('btn-mixer').addEventListener('click', function () {
   const wrap = document.getElementById('mixer-wrap');
   const open = wrap.classList.toggle('open');
-  this.classList.toggle('active-mixer', open);
+  syncMixerUi(open);
   document.body.classList.toggle('mixer-open', open);
 });
 
@@ -1332,6 +1676,7 @@ document.getElementById('btn-tuner').addEventListener('click', async function ()
       document.getElementById(wrap)?.classList.remove('open');
       document.getElementById(btn)?.classList.remove(cls);
     });
+    syncMixerUi(false);
     document.body.classList.remove('mixer-open');
     S.fretboardOpen = false;
 
@@ -1605,6 +1950,7 @@ document.querySelectorAll('[data-type]').forEach(btn => {
 
   document.getElementById('synth-wrap')?.addEventListener('transitionend', () => {
     if (document.getElementById('synth-wrap').classList.contains('open')) {
+      scheduleWaveCanvasAnimation();
       allSynCvs.forEach(({ cvs, slider, fn }) => { const rect = cvs.getBoundingClientRect(); if (rect.width > 0) cvs.width = Math.round(rect.width); paintSyn(cvs, slider, fn); });
     }
   });
@@ -1655,14 +2001,15 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   function closePanelOverlay(wrapId) {
     const wrap = document.getElementById(wrapId); if (!wrap) return;
     wrap.classList.remove('open');
-    if (wrapId === 'mixer-wrap') { document.getElementById('btn-mixer')?.classList.remove('active-mixer'); document.body.classList.remove('mixer-open'); }
+    if (wrapId === 'mixer-wrap') { syncMixerUi(false); document.body.classList.remove('mixer-open'); }
     else if (wrapId === 'synth-wrap') { document.getElementById('btn-seq-synth')?.classList.remove('active-synth'); }
   }
   function openPanelOverlay(wrapId) {
     const wrap = document.getElementById(wrapId); if (!wrap) return;
     wrap.classList.add('open');
-    if (wrapId === 'mixer-wrap') { document.getElementById('btn-mixer')?.classList.add('active-mixer'); document.body.classList.add('mixer-open'); }
+    if (wrapId === 'mixer-wrap') { syncMixerUi(true); document.body.classList.add('mixer-open'); }
     else if (wrapId === 'synth-wrap') { document.getElementById('btn-seq-synth')?.classList.add('active-synth'); }
+    if (wrapId === 'synth-wrap' || wrapId === 'solo-synth-wrap') scheduleWaveCanvasAnimation();
   }
 
   [
@@ -1677,30 +2024,6 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     hdr.querySelector('.mob-panel-close').addEventListener('click', () => closePanelOverlay(wrapId));
     panel.prepend(hdr); panel.prepend(handle);
     document.getElementById(wrapId).addEventListener('click', e => { if (e.target === document.getElementById(wrapId)) closePanelOverlay(wrapId); });
-  });
-
-  const fabMixer = document.createElement('button'); fabMixer.id = 'mob-fab-mixer'; fabMixer.className = 'mob-fab'; fabMixer.innerHTML = '<svg viewBox="0 0 20 20" width="22" height="22" fill="currentColor"><rect x="3" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="9" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="15" y="3" width="2" height="14" rx="1" opacity="0.5"/><rect x="1" y="8" width="6" height="3" rx="1.5"/><rect x="7" y="5" width="6" height="3" rx="1.5"/><rect x="13" y="11" width="6" height="3" rx="1.5"/></svg>'; fabMixer.setAttribute('aria-label', 'Mixer');
-
-  const _muteIconOn  = '<svg viewBox="0 0 20 20" width="22" height="22"><path d="M3 7.5h3l4-3.5v12l-4-3.5H3V7.5z" fill="currentColor"/><path d="M13 7a4.5 4.5 0 010 6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M15.5 4.5a7.5 7.5 0 010 11" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>';
-  const _muteIconOff = '<svg viewBox="0 0 20 20" width="22" height="22"><path d="M3 7.5h3l4-3.5v12l-4-3.5H3V7.5z" fill="currentColor"/><line x1="13" y1="7" x2="18" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="7" x2="13" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-  const fabMute = document.createElement('button'); fabMute.id = 'mob-fab-mute'; fabMute.className = 'mob-fab';
-  fabMute.innerHTML = audio.enabled ? _muteIconOn : _muteIconOff;
-  fabMute.classList.toggle('muted', !audio.enabled);
-  fabMute.setAttribute('aria-label', 'Mute');
-
-  document.body.appendChild(fabMixer); document.body.appendChild(fabMute);
-  fabMixer.addEventListener('click', () => { const isOpen = document.getElementById('mixer-wrap').classList.contains('open'); isOpen ? closePanelOverlay('mixer-wrap') : openPanelOverlay('mixer-wrap'); });
-  fabMute.addEventListener('click', () => {
-    audio.enabled = !audio.enabled;
-    fabMute.innerHTML = audio.enabled ? _muteIconOn : _muteIconOff;
-    fabMute.classList.toggle('muted', !audio.enabled);
-    const hdrBtn = document.getElementById('btn-audio');
-    if (hdrBtn) {
-      hdrBtn.classList.toggle('active-audio', audio.enabled);
-      hdrBtn.innerHTML = audio.enabled
-        ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg><span class="btn-text"> Audio</span>'
-        : '<span class="hdr-icon">🔇</span><span class="btn-text"> Muted</span>';
-    }
   });
 
   loadDrumSamples(() => scheduleDrmDraw());
@@ -1736,12 +2059,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     if (k === S.temp) opt.selected = true;
     mobTempSel.appendChild(opt);
   });
-  mobTempSel.addEventListener('change', function () {
-    S.temp = this.value;
-    const dt = document.getElementById('sel-temperament'); if (dt) dt.value = this.value;
-    document.getElementById('temp-desc').textContent = TEMPERAMENTS[S.temp].desc;
-    updateInfo(); draw(); drawFretboard();
-  });
+  mobTempSel.addEventListener('change', function () { applyTemperamentSelection(this.value); });
 
   const mobFamSel = document.getElementById('mob-family-sel');
   Object.entries(SCALE_FAMILIES).forEach(([k, v]) => {
@@ -1753,35 +2071,20 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   });
 
   function populateMobScale() {
-    const sel = document.getElementById('mob-scale-sel'); sel.innerHTML = '';
-    Object.keys(SCALE_FAMILIES[S.family]?.scales || {}).forEach(name => {
-      const opt = document.createElement('option'); opt.value = name; opt.textContent = name;
-      if (name === S.scaleName) opt.selected = true;
-      sel.appendChild(opt);
-    });
+    populateScaleSelect('mob-scale-sel');
   }
   populateMobScale();
 
-  function updateMobRoot() { document.getElementById('mob-root-lbl').textContent = CHROMATIC[S.root]; }
-  updateMobRoot();
+  refreshRootUi();
 
   document.getElementById('mob-root-prev').addEventListener('click', () => {
-    S.root = (S.root + 11) % 12; updateMobRoot(); refreshNoteGrid('root-grid', 'root'); updateInfo(); draw(); if (S.fretboardOpen) drawFretboard();
+    S.root = (S.root + 11) % 12; refreshRootUi(); updateInfo(); draw(); if (S.fretboardOpen) scheduleDrawFretboard();
   });
   document.getElementById('mob-root-next').addEventListener('click', () => {
-    S.root = (S.root + 1) % 12; updateMobRoot(); refreshNoteGrid('root-grid', 'root'); updateInfo(); draw(); if (S.fretboardOpen) drawFretboard();
+    S.root = (S.root + 1) % 12; refreshRootUi(); updateInfo(); draw(); if (S.fretboardOpen) scheduleDrawFretboard();
   });
-  mobFamSel.addEventListener('change', function () {
-    S.family = this.value;
-    const mainFam = document.getElementById('sel-family'); if (mainFam) mainFam.value = this.value;
-    buildScaleSelect(); populateMobScale(); updateInfo(); draw();
-  });
-  document.getElementById('mob-scale-sel').addEventListener('change', function () {
-    S.scaleName = this.value;
-    const mainSc = document.getElementById('sel-scale'); if (mainSc) mainSc.value = this.value;
-    updateInfo(); draw();
-    refreshNoteGrid('root-grid', 'root');
-  });
+  mobFamSel.addEventListener('change', function () { applyScaleFamilySelection(this.value); });
+  document.getElementById('mob-scale-sel').addEventListener('change', function () { applyScaleNameSelection(this.value); });
   document.getElementById('sel-scale').addEventListener('change', () => {
     const ms = document.getElementById('mob-scale-sel');
     if (ms && ms.value !== S.scaleName) ms.value = S.scaleName;
@@ -1802,6 +2105,14 @@ function syncGetFullState() {
     grid: { ...SEQ.grid },
     drumGrid: { ...DRUM_GRID },
     drumLoopLen,
+  };
+}
+
+function syncTransportAnchor(msg) {
+  return {
+    sharedMs: msg.epochMs,
+    absStep: msg.transportAbsStep ?? 0,
+    revision: msg.transportRevision ?? 0,
   };
 }
 
@@ -1848,17 +2159,25 @@ function syncHandleMessage(msg) {
   switch (msg.type) {
     case 'PLAY':
       setPeerEpochMs(msg.epochMs);
+      seqEngine.setPendingPeerAnchor(syncTransportAnchor(msg));
       if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
       syncApplyFullState(msg);
       if (seqEngine.playing) {
-        if (msg.epochMs < epochMs) { setEpochMs(msg.epochMs); seqEngine.rebase(true); }
+        seqEngine.syncToRemoteAnchor(syncTransportAnchor(msg));
       } else {
-        seqEngine.play(msg.epochMs);
+        seqEngine.play(syncTransportAnchor(msg));
       }
       scheduleDrawSequencer(); scheduleDrmDraw();
       break;
     case 'JOINED':
       setPeerEpochMs(msg.epochMs);
+      seqEngine.setPendingPeerAnchor(syncTransportAnchor(msg));
+      break;
+    case 'PAUSE':
+      setPeerEpochMs(msg.epochMs);
+      if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
+      syncApplyFullState(msg);
+      seqEngine.pause(true, syncTransportAnchor(msg));
       break;
     case 'STOP':
       setPeerEpochMs(null);
@@ -1866,11 +2185,12 @@ function syncHandleMessage(msg) {
       break;
     case 'REBASE':
       setPeerEpochMs(msg.epochMs);
+      seqEngine.setPendingPeerAnchor(syncTransportAnchor(msg));
       if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
       if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
       if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
       syncUpdateUI(msg);
-      if (seqEngine.playing) { setEpochMs(msg.epochMs); seqEngine.rebase(true); }
+      if (seqEngine.playing) seqEngine.rebase(true, syncTransportAnchor(msg));
       scheduleDrawSequencer();
       break;
     case 'GRID_SET':
@@ -1893,12 +2213,30 @@ function syncHandleMessage(msg) {
       break;
     case 'PEER_JOINED':
       if (seqEngine.playing) {
-        const loopDurMs = SEQ.loopLen * seqStepDur() * 1000;
-        const elapsed   = Sync.sharedNow() - epochMs;
-        const nextLoopEpochMs = epochMs + (Math.floor(elapsed / loopDurMs) + 1) * loopDurMs;
-        Sync.send({ type: 'PLAY', epochMs: nextLoopEpochMs, masterBpm, ...syncGetFullState() });
+        const loopLen = Math.max(1, Math.min(SEQ.loopLen, seqSteps()));
+        const snapshot = seqEngine.getTransportSnapshot();
+        const nextLoopAbsStep = (Math.floor(snapshot.currentAbsStep / loopLen) + 1) * loopLen;
+        const nextLoopEpochMs = seqEngine.transportSharedMsForStep(nextLoopAbsStep);
+        Sync.send({
+          type: 'PLAY',
+          epochMs: nextLoopEpochMs,
+          transportAbsStep: nextLoopAbsStep,
+          transportRevision: seqEngine._transportRevision,
+          masterBpm,
+          ...syncGetFullState(),
+        });
       } else {
-        Sync.send({ type: 'FULL_STATE', playing: false, masterBpm, ...syncGetFullState() });
+        Sync.send({ type: 'FULL_STATE', playing: false, paused: seqEngine.paused, masterBpm, ...syncGetFullState() });
+        if (seqEngine.paused && epochMs !== null) {
+          Sync.send({
+            type: 'PAUSE',
+            epochMs,
+            transportAbsStep: seqEngine._anchorAbsStep,
+            transportRevision: seqEngine._transportRevision,
+            masterBpm,
+            ...syncGetFullState(),
+          });
+        }
       }
       break;
     case 'FULL_STATE':
@@ -1965,9 +2303,10 @@ function syncHandleMessage(msg) {
   let peerCount = 0;
   function updateBadge(state) {
     const peers = peerCount > 0 ? `  ${peerCount} peer${peerCount > 1 ? 's' : ''}` : '  waiting…';
+    const conf = Number.isFinite(Sync.syncConfidenceMs()) ? `  ±${Sync.syncConfidenceMs().toFixed(1)}ms` : '';
     if (state === 'live') {
       badgeText.style.color = '#4ade80';
-      badgeText.textContent = `● ${roomId}${peers}`;
+      badgeText.textContent = `● ${roomId}${peers}${conf}`;
     } else {
       badgeText.style.color = '#f87171';
       badgeText.textContent = `● ${roomId}  reconnecting…`;
@@ -2015,8 +2354,9 @@ function syncHandleMessage(msg) {
     () => { peerCount = 0; updateBadge('live'); },
     () => { peerCount = 0; updateBadge('offline'); },
     () => {
+      updateBadge('live');
       if (seqEngine.playing && epochMs !== null && !seqEngine._barJoining) {
-        seqEngine._corrTick = 49;
+        seqEngine._corrTick = 24;
       }
     },
   );

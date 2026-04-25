@@ -41,7 +41,7 @@
         <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg><span class="btn-text"> Mixer</span>
       </button>
       <button class="hdr-btn" id="btn-tuner" title="Chromatic tuner">
-        <span class="hdr-icon">🎙</span><span class="btn-text"> Tuner</span>
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-tuner"></use></svg><span class="btn-text"> Tuner</span>
       </button>
     </div>
   </div>
@@ -129,6 +129,14 @@
 
   <!-- Canvas -->
   <div class="viz-panel" id="viz-panel">
+    <div class="viz-quick-actions" aria-label="Quick sound controls">
+      <button class="viz-quick-btn" id="btn-viz-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-mixer"></use></svg>
+      </button>
+      <button class="viz-quick-btn active-audio" id="btn-viz-mute" title="Mute audio" aria-label="Mute audio">
+        <svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>
+      </button>
+    </div>
     <canvas id="canvas"></canvas>
   </div>
 
@@ -511,6 +519,51 @@
     <div class="bpm-picker-scroll" id="bpm-picker-scroll"></div>
     <div class="bpm-picker-fade bot"></div>
     <div class="bpm-picker-indicator"></div>
+  </div>
+</div>
+
+<!-- Responsive Scale Picker -->
+<div id="scale-picker-overlay" style="display:none" aria-hidden="true">
+  <div class="scale-picker-backdrop"></div>
+  <div class="scale-picker-pop" role="dialog" aria-modal="true" aria-labelledby="scale-picker-title">
+    <div class="scale-picker-topbar">
+      <div>
+        <div class="scale-picker-kicker">Circle Center</div>
+        <h2 id="scale-picker-title">Scale Settings</h2>
+      </div>
+      <button class="scale-picker-close" id="scale-picker-close" aria-label="Close scale settings">X</button>
+    </div>
+    <p class="scale-picker-copy">Slide the wheels to change temperament, family, and mode.</p>
+    <div class="scale-picker-columns">
+      <section class="scale-wheel scale-wheel-temp">
+        <div class="scale-wheel-label">Temperament</div>
+        <div class="scale-wheel-frame">
+          <div class="scale-wheel-fade top"></div>
+          <div class="scale-wheel-scroll" id="scale-picker-temp"></div>
+          <div class="scale-wheel-fade bot"></div>
+          <div class="scale-wheel-indicator"></div>
+        </div>
+      </section>
+      <section class="scale-wheel scale-wheel-family">
+        <div class="scale-wheel-label">Family</div>
+        <div class="scale-wheel-frame">
+          <div class="scale-wheel-fade top"></div>
+          <div class="scale-wheel-scroll" id="scale-picker-family"></div>
+          <div class="scale-wheel-fade bot"></div>
+          <div class="scale-wheel-indicator"></div>
+        </div>
+      </section>
+      <section class="scale-wheel scale-wheel-mode">
+        <div class="scale-wheel-label">Mode</div>
+        <div class="scale-wheel-frame">
+          <div class="scale-wheel-fade top"></div>
+          <div class="scale-wheel-scroll" id="scale-picker-scale"></div>
+          <div class="scale-wheel-fade bot"></div>
+          <div class="scale-wheel-indicator"></div>
+        </div>
+      </section>
+    </div>
+    <div class="scale-picker-summary" id="scale-picker-summary"></div>
   </div>
 </div>
 
