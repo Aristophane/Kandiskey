@@ -665,7 +665,7 @@ header p { display: none; }
 .preset-btn.active { background: rgba(245,158,11,0.15); border-color: var(--accent3); color: var(--accent3); }
 
 /* ── SEQUENCER ── */
-#drum-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+#drum-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 .seq-panel { height: 100%; display: flex; flex-direction: column; background: rgba(7,5,18,0.99); }
 .panel-subheader {
   display: none;
@@ -700,6 +700,17 @@ header p { display: none; }
   width: 42px;
   height: 42px;
 }
+.params-drawer-btn {
+  background: rgba(167,139,250,0.10);
+  border-color: rgba(167,139,250,0.30);
+  color: rgba(167,139,250,0.75);
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s;
+}
+.params-drawer-btn.open {
+  background: rgba(167,139,250,0.20);
+  border-color: rgba(167,139,250,0.55);
+  color: #c4b5fd;
+}
 .seq-header {
   flex-shrink: 0;
   display: flex; align-items: center; gap: 7px;
@@ -707,8 +718,24 @@ header p { display: none; }
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
+/* Collapsible params drawer */
+.seq-params-drawer {
+  overflow: hidden;
+  max-height: 1000px;
+  transition: max-height 0.30s cubic-bezier(0.4,0,0.2,1),
+              padding 0.30s cubic-bezier(0.4,0,0.2,1),
+              opacity 0.25s ease;
+  opacity: 1;
+}
+.seq-params-drawer.closed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  border-bottom-width: 0;
+}
 .seq-canvas-wrap { flex: 1; min-height: 0; }
-#seq-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+#seq-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 .seq-lbl { font-size: 0.6rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
 .seq-val  { font-size: 0.7rem; color: var(--accent2); font-family: monospace; }
 
@@ -953,19 +980,45 @@ header p { display: none; }
   color: #dbeafe;
 }
 #btn-viz-mute {
-  background: rgba(52,211,153,0.14);
-  border-color: rgba(52,211,153,0.42);
-  color: #6ee7b7;
+  background: rgba(245,158,11,0.14);
+  border-color: rgba(245,158,11,0.42);
+  color: #fcd34d;
 }
 #btn-viz-mute.muted {
-  background: rgba(239,68,68,0.14);
-  border-color: rgba(239,68,68,0.46);
-  color: #fca5a5;
+  background: rgba(245,158,11,0.08);
+  border-color: rgba(245,158,11,0.22);
+  color: rgba(245,158,11,0.40);
 }
 #btn-viz-bpm {
-  background: rgba(167,139,250,0.16);
-  border-color: rgba(167,139,250,0.42);
-  color: #e9ddff;
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.42);
+  color: #fca5a5;
+}
+#btn-viz-bpm:hover {
+  background: rgba(239,68,68,0.24);
+  border-color: rgba(239,68,68,0.65);
+  color: #fecaca;
+}
+
+/* Panel subheader mute buttons — amber like the viz mute */
+#btn-seq-panel-mute,
+#btn-drum-panel-mute {
+  background: rgba(245,158,11,0.14);
+  border-color: rgba(245,158,11,0.42);
+  color: #fcd34d;
+}
+#btn-seq-panel-mute.muted,
+#btn-drum-panel-mute.muted {
+  background: rgba(245,158,11,0.08);
+  border-color: rgba(245,158,11,0.22);
+  color: rgba(245,158,11,0.40);
+}
+/* Panel subheader BPM buttons — red */
+#btn-seq-panel-bpm,
+#btn-drum-panel-bpm {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.42);
+  color: #fca5a5;
 }
 
 /* ── FRETBOARD PANEL ── */
@@ -1248,6 +1301,17 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
     right: auto;
     flex-direction: row;
     align-items: flex-start;
+    gap: 8px;
+  }
+  /* Mute button floats bottom-right on ≤1024px */
+  #btn-viz-mute {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    z-index: 500;
+    width: 46px;
+    height: 46px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5);
   }
   .viz-quick-actions {
     top: auto;
@@ -1335,6 +1399,28 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   }
   #btn-seq-panel-bpm,
   #btn-drum-panel-bpm { display: flex; }
+
+  /* Params drawer buttons visible on mobile */
+  #btn-seq-params,
+  #btn-drum-params { display: flex; }
+
+  /* Params drawers start closed on mobile */
+  #seq-params-drawer,
+  #drum-params-drawer {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    border-bottom-width: 0;
+  }
+  #seq-params-drawer.open,
+  #drum-params-drawer.open {
+    max-height: 600px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    opacity: 1;
+    border-bottom-width: 1px;
+  }
 
   /* Seq/drum/solo headers: stack control groups vertically on mobile */
   #seq-wrap .seq-header,
@@ -1577,6 +1663,14 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   body:not(.on-viz-slide) #mob-btn-play,
   body:not(.on-viz-slide) #mob-btn-pause,
   body:not(.on-viz-slide) #mob-btn-stop { visibility: hidden; pointer-events: none; }
+  /* Mute stays bottom-right on phone, above the scale strip, hidden on non-viz slides */
+  #btn-viz-mute {
+    bottom: calc(var(--strip-h, 52px) + 10px);
+    right: 12px;
+    width: 42px;
+    height: 42px;
+  }
+  body:not(.on-viz-slide) #btn-viz-mute { visibility: hidden; pointer-events: none; }
 
   /* Bottom sheet handle + header */
   .mob-panel-handle {

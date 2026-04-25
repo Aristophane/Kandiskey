@@ -26,11 +26,20 @@
     </symbol>
     <symbol id="icon-fretboard" viewBox="0 0 24 24">
       <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 7h14"/>
-        <path d="M5 12h14"/>
-        <path d="M5 17h14"/>
-        <path d="M8 5v14"/>
-        <path d="M14 5v14"/>
+        <!-- Guitar body -->
+        <ellipse cx="12" cy="18" rx="7.5" ry="5"/>
+        <!-- Sound hole -->
+        <circle cx="12" cy="18" r="2"/>
+        <!-- Neck sides -->
+        <path d="M10.5 7v6M13.5 7v6"/>
+        <!-- Frets -->
+        <path d="M10.5 9h3M10.5 11h3"/>
+        <!-- Nut -->
+        <path d="M10.5 7h3"/>
+        <!-- Headstock -->
+        <path d="M10 7V3.5h4V7"/>
+        <!-- Tuner pegs -->
+        <path d="M10 4.5H8.5M10 6H8.5M14 4.5h1.5M14 6h1.5"/>
       </g>
     </symbol>
     <symbol id="icon-synth" viewBox="0 0 24 24">
@@ -368,6 +377,11 @@
         </button>
       </div>
       <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-seq-params" title="Sequencer settings" aria-label="Sequencer settings" aria-expanded="false">
+          <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6"/>
+          </svg>
+        </button>
         <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-seq-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
         <button class="viz-quick-btn panel-round-btn" id="btn-seq-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
           <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
@@ -378,13 +392,9 @@
         </button>
       </div>
     </div>
-    <div class="seq-header">
+    <div class="seq-header seq-params-drawer" id="seq-params-drawer">
       <span class="seq-lbl">Rhythm</span>
       <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Loop</span>
-      <input type="range" class="seq-sl" id="seq-loop-len" min="1" max="16" step="1" value="16" style="width:60px">
-      <span class="seq-val" id="seq-loop-val">16</span>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Gate</span>
       <input type="range" class="seq-sl" id="seq-gate" min="10" max="100" step="5" value="65" style="width:55px">
@@ -447,6 +457,11 @@
         </button>
       </div>
       <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-drum-params" title="Drum settings" aria-label="Drum settings" aria-expanded="false">
+          <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6"/>
+          </svg>
+        </button>
         <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-drum-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
         <button class="viz-quick-btn panel-round-btn" id="btn-drum-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
           <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
@@ -457,16 +472,12 @@
         </button>
       </div>
     </div>
-    <div class="seq-header">
+    <div class="seq-header seq-params-drawer" id="drum-params-drawer">
       <span class="seq-lbl">Bank</span>
       <select id="drum-bank-sel" class="sm" style="min-width:90px"></select>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Pattern</span>
       <select id="drum-preset-sel" class="sm" style="min-width:120px"></select>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Loop</span>
-      <input type="range" class="seq-sl" id="drum-loop-len" min="1" max="16" step="1" value="16" style="width:60px">
-      <span class="seq-val" id="drum-loop-val">16</span>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Vel</span>
       <input type="range" class="seq-sl" id="drum-vel" min="10" max="100" step="5" value="80" style="width:55px">

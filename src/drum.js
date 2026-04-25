@@ -795,15 +795,25 @@ export function drawDrumMachine() {
   drumCtx.strokeStyle = 'rgba(255,255,255,0.12)'; drumCtx.lineWidth = 1; drumCtx.stroke();
 
   // Loop length overlay — dim steps outside active drum loop
+  const loopEndX = LM + drmLoop * gW;
   if (drmLoop < steps) {
-    const loopEndX = LM + drmLoop * gW;
     drumCtx.fillStyle = 'rgba(0,0,0,0.45)';
     drumCtx.fillRect(loopEndX, 0, W - loopEndX, H);
     drumCtx.beginPath(); drumCtx.moveTo(loopEndX, 0); drumCtx.lineTo(loopEndX, H);
     drumCtx.strokeStyle = 'rgba(251,146,60,0.6)'; drumCtx.lineWidth = 2; drumCtx.stroke();
-    drumCtx.fillStyle = 'rgba(251,146,60,0.55)';
-    drumCtx.fillRect(LM, 0, drmLoop * gW, 2);
   }
+  // Loop handle bar — always drawn at top of grid
+  const DRM_BAR_H = 14;
+  drumCtx.fillStyle = 'rgba(251,146,60,0.12)';
+  drumCtx.fillRect(LM, 0, W - LM, DRM_BAR_H);
+  drumCtx.fillStyle = 'rgba(251,146,60,0.58)';
+  drumCtx.fillRect(LM, 0, drmLoop * gW, DRM_BAR_H);
+  drumCtx.fillStyle = '#fb923c';
+  drumCtx.fillRect(loopEndX - 6, 0, 12, DRM_BAR_H);
+  drumCtx.fillStyle = 'rgba(0,0,0,0.80)';
+  drumCtx.font = `bold 9px system-ui`;
+  drumCtx.textAlign = 'center'; drumCtx.textBaseline = 'middle';
+  drumCtx.fillText(drmLoop, loopEndX, DRM_BAR_H / 2);
 }
 
 // ── Drum tap / long-press handler ────────────────────────────────────
@@ -821,6 +831,24 @@ function _drmBlinkValue(loopPhase, numBlinks) {
     if (dt < hw) { const t = 1 - dt / hw; v = Math.max(v, t * t * (3 - 2 * t)); }
   }
   return v;
+}
+
+// ── Drum loop handle drag state ──────────────────────────────────────
+let _drmLoopDragActive = false, _drmLoopDragPtrId = -1;
+
+function _updateDrmLoopFromX(clientX) {
+  const rect = drumCanvas.getBoundingClientRect();
+  const W = drumCanvas.clientWidth;
+  const steps = seqSteps();
+  const LM = 48;
+  const gW = (W - LM) / steps;
+  const px = clientX - rect.left;
+  const newLen = Math.max(1, Math.min(steps, Math.round((px - LM) / gW)));
+  if (newLen !== drumLoopLen) {
+    setDrumLoopLen(newLen);
+    _syncSend({ type: 'SEQ_PARAM', drumLoopLen: newLen });
+    scheduleDrmDraw();
+  }
 }
 
 let _drmTapKey = null, _drmTapCount = 0, _drmTapTimer = null;
@@ -843,6 +871,17 @@ function _drmCell(e) {
 drumCanvas.addEventListener('contextmenu', e => e.preventDefault());
 
 drumCanvas.addEventListener('pointerdown', e => {
+  // Top 16px → drum loop handle drag zone
+  const rect = drumCanvas.getBoundingClientRect();
+  const py = e.clientY - rect.top;
+  if (py < 16) {
+    _drmLoopDragActive = true;
+    _drmLoopDragPtrId = e.pointerId;
+    drumCanvas.setPointerCapture(e.pointerId);
+    _updateDrmLoopFromX(e.clientX);
+    return;
+  }
+
   const key = _drmCell(e);
   if (!key) return;
   _drmLpStartX = e.clientX; _drmLpStartY = e.clientY;
@@ -859,12 +898,24 @@ drumCanvas.addEventListener('pointerdown', e => {
 });
 
 drumCanvas.addEventListener('pointermove', e => {
+  if (_drmLoopDragActive && e.pointerId === _drmLoopDragPtrId) {
+    _updateDrmLoopFromX(e.clientX);
+    return;
+  }
   if (_drmLpTimer && (Math.abs(e.clientX - _drmLpStartX) > 10 || Math.abs(e.clientY - _drmLpStartY) > 10)) {
     clearTimeout(_drmLpTimer); _drmLpTimer = null;
   }
 });
 
+drumCanvas.addEventListener('pointercancel', e => {
+  if (e.pointerId === _drmLoopDragPtrId) _drmLoopDragActive = false;
+});
+
 drumCanvas.addEventListener('pointerup', e => {
+  if (_drmLoopDragActive && e.pointerId === _drmLoopDragPtrId) {
+    _drmLoopDragActive = false;
+    return;
+  }
   if (!_drmLpTimer) return;
   clearTimeout(_drmLpTimer); _drmLpTimer = null;
   const key = _drmCell(e);
@@ -900,10 +951,6 @@ export function loadWorldRhythm(name) {
   });
   if (name === 'Clear') {
     setDrumLoopLen(steps);
-    const sl = document.getElementById('drum-loop-len');
-    if (sl) { sl.max = steps; sl.value = steps; }
-    const lv = document.getElementById('drum-loop-val');
-    if (lv) lv.textContent = steps;
     scheduleDrmDraw(); return;
   }
   Object.keys(pat).forEach(key => {
@@ -915,10 +962,6 @@ export function loadWorldRhythm(name) {
     });
   });
   setDrumLoopLen(steps);
-  const sl = document.getElementById('drum-loop-len');
-  if (sl) { sl.max = steps; sl.value = steps; }
-  const lv = document.getElementById('drum-loop-val');
-  if (lv) lv.textContent = steps;
   scheduleDrmDraw();
 }
 

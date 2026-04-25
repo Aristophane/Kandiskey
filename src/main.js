@@ -740,8 +740,8 @@ function syncAudioUi() {
   if (hdrBtn) {
     hdrBtn.classList.toggle('active-audio', audio.enabled);
     hdrBtn.innerHTML = audio.enabled
-      ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg><span class="btn-text"> Audio</span>'
-      : '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-muted"></use></svg><span class="btn-text"> Muted</span>';
+      ? '<svg class="hdr-icon"><use href="#icon-audio"></use></svg><span class="btn-text"> Audio</span>'
+      : '<svg class="hdr-icon"><use href="#icon-muted"></use></svg><span class="btn-text"> Muted</span>';
   }
 
   ['btn-viz-mute', 'btn-seq-panel-mute', 'btn-drum-panel-mute'].forEach(id => {
@@ -752,8 +752,8 @@ function syncAudioUi() {
     vizBtn.title = audio.enabled ? 'Mute audio' : 'Unmute audio';
     vizBtn.setAttribute('aria-label', audio.enabled ? 'Mute audio' : 'Unmute audio');
     vizBtn.innerHTML = audio.enabled
-      ? '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-audio"></use></svg>'
-      : '<svg class="hdr-icon"><use href="simple-white-icons.svg#icon-muted"></use></svg>';
+      ? '<svg class="hdr-icon"><use href="#icon-audio"></use></svg>'
+      : '<svg class="hdr-icon"><use href="#icon-muted"></use></svg>';
   });
 }
 
@@ -781,6 +781,33 @@ function triggerSequencerPlay() {
   }
   seqEngine.play();
 }
+
+// ── PARAMS DRAWER TOGGLES ───────────────────────────────────────────
+(function () {
+  function setupDrawer(btnId, drawerId) {
+    const btn = document.getElementById(btnId);
+    const drawer = document.getElementById(drawerId);
+    if (!btn || !drawer) return;
+    // Phone (≤768px): starts closed; tablet/desktop: starts open
+    const isPhone = () => window.innerWidth <= 768;
+    if (isPhone()) {
+      // already closed via CSS default — nothing to do
+    }
+    btn.addEventListener('click', () => {
+      if (isPhone()) {
+        const nowOpen = drawer.classList.toggle('open');
+        btn.classList.toggle('open', nowOpen);
+        btn.setAttribute('aria-expanded', nowOpen);
+      } else {
+        const nowClosed = drawer.classList.toggle('closed');
+        btn.classList.toggle('open', !nowClosed);
+        btn.setAttribute('aria-expanded', !nowClosed);
+      }
+    });
+  }
+  setupDrawer('btn-seq-params', 'seq-params-drawer');
+  setupDrawer('btn-drum-params', 'drum-params-drawer');
+})();
 
 document.getElementById('btn-audio')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-viz-mute')?.addEventListener('click', () => toggleAudioEnabled());
@@ -833,7 +860,7 @@ document.getElementById('btn-seq-synth').addEventListener('click', function () {
   const wrap = document.getElementById('synth-wrap');
   const open = wrap.classList.toggle('open');
   this.classList.toggle('active-synth', open);
-  this.innerHTML = `<svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="simple-white-icons.svg#icon-synth"></use></svg> Sound ${open ? '▴' : '▾'}`;
+  this.innerHTML = `<svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound ${open ? '▴' : '▾'}`;
   if (open) scheduleWaveCanvasAnimation();
 });
 
@@ -1126,29 +1153,12 @@ document.getElementById('btn-seq').addEventListener('click', function () {
     SEQ.rhythmKey = this.value;
     const newSteps = seqSteps();
     SEQ.loopLen = newSteps;
-    const loopSl = document.getElementById('seq-loop-len');
-    loopSl.max = newSteps; loopSl.value = newSteps;
-    document.getElementById('seq-loop-val').textContent = newSteps;
     if (seqEngine.playing) seqEngine.rebase();
     else Sync.send({ type: 'SEQ_PARAM', rhythmKey: SEQ.rhythmKey, loopLen: SEQ.loopLen });
     scheduleDrawSequencer();
   });
 })();
 
-document.getElementById('seq-loop-len').addEventListener('input', function () {
-  SEQ.loopLen = parseInt(this.value);
-  document.getElementById('seq-loop-val').textContent = SEQ.loopLen;
-  if (seqEngine.playing) seqEngine.rebase();
-  else Sync.send({ type: 'SEQ_PARAM', loopLen: SEQ.loopLen });
-  scheduleDrawSequencer();
-});
-
-document.getElementById('drum-loop-len').addEventListener('input', function () {
-  setDrumLoopLen(parseInt(this.value));
-  document.getElementById('drum-loop-val').textContent = drumLoopLen;
-  Sync.send({ type: 'SEQ_PARAM', drumLoopLen });
-  scheduleDrmDraw();
-});
 
 // ── BPM CYLINDER PICKER ─────────────────────────────────────────────
 (function () {
@@ -2074,8 +2084,8 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
   }
 
   [
-    { wrapId: 'mixer-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-mixer"></use></svg>Mixer', color: '#60a5fa' },
-    { wrapId: 'synth-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="simple-white-icons.svg#icon-synth"></use></svg>Sound', color: '#f59e0b' },
+    { wrapId: 'mixer-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="#icon-mixer"></use></svg>Mixer', color: '#60a5fa' },
+    { wrapId: 'synth-wrap', label: '<svg class="hdr-icon" style="width:1.1em;height:1.1em;margin-right:4px;fill:currentColor"><use href="#icon-synth"></use></svg>Sound', color: '#f59e0b' },
     { wrapId: 'solo-synth-wrap', label: '🔊 Solo Sound', color: '#c4b5fd' },
   ].forEach(({ wrapId, label, color }) => {
     const panel = document.querySelector(`#${wrapId} .synth-panel`); if (!panel) return;
@@ -2195,20 +2205,11 @@ function syncUpdateUI(msg) {
   }
   if (msg.rhythmKey !== undefined) {
     const sel = document.getElementById('seq-rhythm'); if (sel) sel.value = msg.rhythmKey;
-    const loopSl = document.getElementById('seq-loop-len'); if (loopSl) loopSl.max = seqSteps();
-  }
-  if (msg.loopLen !== undefined) {
-    const sl = document.getElementById('seq-loop-len'); if (sl) sl.value = msg.loopLen;
-    const vl = document.getElementById('seq-loop-val'); if (vl) vl.textContent = msg.loopLen;
   }
   if (msg.gate !== undefined) {
     const pct = Math.round(msg.gate * 100);
     const sl = document.getElementById('seq-gate'); if (sl) sl.value = pct;
     const vl = document.getElementById('seq-gate-val'); if (vl) vl.textContent = pct + '%';
-  }
-  if (msg.drumLoopLen !== undefined) {
-    const sl = document.getElementById('drum-loop-len'); if (sl) { sl.max = seqSteps(); sl.value = msg.drumLoopLen; }
-    const vl = document.getElementById('drum-loop-val'); if (vl) vl.textContent = msg.drumLoopLen;
   }
 }
 

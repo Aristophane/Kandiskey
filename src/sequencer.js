@@ -547,15 +547,25 @@ export function drawSequencer() {
   seqCtx.strokeStyle = 'rgba(255,255,255,0.14)'; seqCtx.lineWidth = 1; seqCtx.stroke();
 
   const loopLen = Math.max(1, Math.min(SEQ.loopLen, steps));
+  const loopEndX = LM + loopLen * gW;
   if (loopLen < steps) {
-    const loopEndX = LM + loopLen * gW;
     seqCtx.fillStyle = 'rgba(0,0,0,0.45)';
     seqCtx.fillRect(loopEndX, 0, W - loopEndX, H);
     seqCtx.beginPath(); seqCtx.moveTo(loopEndX, 0); seqCtx.lineTo(loopEndX, H);
     seqCtx.strokeStyle = 'rgba(167,139,250,0.6)'; seqCtx.lineWidth = 2; seqCtx.stroke();
-    seqCtx.fillStyle = 'rgba(167,139,250,0.55)';
-    seqCtx.fillRect(LM, 0, loopLen * gW, 2);
   }
+  // Loop handle bar — always drawn at top of grid
+  const SEQ_BAR_H = 14;
+  seqCtx.fillStyle = 'rgba(245,158,11,0.12)';
+  seqCtx.fillRect(LM, 0, W - LM, SEQ_BAR_H);
+  seqCtx.fillStyle = 'rgba(245,158,11,0.58)';
+  seqCtx.fillRect(LM, 0, loopLen * gW, SEQ_BAR_H);
+  seqCtx.fillStyle = '#f59e0b';
+  seqCtx.fillRect(loopEndX - 6, 0, 12, SEQ_BAR_H);
+  seqCtx.fillStyle = 'rgba(0,0,0,0.80)';
+  seqCtx.font = `bold 9px system-ui`;
+  seqCtx.textAlign = 'center'; seqCtx.textBaseline = 'middle';
+  seqCtx.fillText(loopLen, loopEndX, SEQ_BAR_H / 2);
 
   if (seqEngine.playing && S.fretboardOpen && seqEngine.displayStep !== _seqFbLastStep) {
     _seqFbLastStep = seqEngine.displayStep;
@@ -581,6 +591,25 @@ function seqCurrentLoopCount() {
 // 4 taps  → play every 4 loops
 // Long press (600 ms) → reset (turn off)
 
+// ── Loop handle drag state ───────────────────────────────────────────
+let _seqLoopDragActive = false, _seqLoopDragPtrId = -1;
+
+function _updateSeqLoopFromX(clientX) {
+  const rect = seqCanvas.getBoundingClientRect();
+  const W = seqCanvas.clientWidth;
+  const steps = seqSteps();
+  const LM = 30;
+  const gW = (W - LM) / steps;
+  const px = clientX - rect.left;
+  const newLen = Math.max(1, Math.min(steps, Math.round((px - LM) / gW)));
+  if (newLen !== SEQ.loopLen) {
+    SEQ.loopLen = newLen;
+    if (seqEngine.playing) seqEngine.rebase();
+    else _syncSend({ type: 'SEQ_PARAM', loopLen: SEQ.loopLen });
+    scheduleDrawSequencer();
+  }
+}
+
 let _tapKey = null, _tapCount = 0, _tapTimer = null;
 let _lpTimer = null, _lpStartX = 0, _lpStartY = 0;
 
@@ -600,6 +629,17 @@ function _seqCell(e) {
 seqCanvas.addEventListener('contextmenu', e => e.preventDefault());
 
 seqCanvas.addEventListener('pointerdown', e => {
+  // Top 16px → loop handle drag zone
+  const rect = seqCanvas.getBoundingClientRect();
+  const py = e.clientY - rect.top;
+  if (py < 16) {
+    _seqLoopDragActive = true;
+    _seqLoopDragPtrId = e.pointerId;
+    seqCanvas.setPointerCapture(e.pointerId);
+    _updateSeqLoopFromX(e.clientX);
+    return;
+  }
+
   const key = _seqCell(e);
   if (!key) return;
   _lpStartX = e.clientX; _lpStartY = e.clientY;
@@ -616,12 +656,24 @@ seqCanvas.addEventListener('pointerdown', e => {
 });
 
 seqCanvas.addEventListener('pointermove', e => {
+  if (_seqLoopDragActive && e.pointerId === _seqLoopDragPtrId) {
+    _updateSeqLoopFromX(e.clientX);
+    return;
+  }
   if (_lpTimer && (Math.abs(e.clientX - _lpStartX) > 10 || Math.abs(e.clientY - _lpStartY) > 10)) {
     clearTimeout(_lpTimer); _lpTimer = null;
   }
 });
 
+seqCanvas.addEventListener('pointercancel', e => {
+  if (e.pointerId === _seqLoopDragPtrId) _seqLoopDragActive = false;
+});
+
 seqCanvas.addEventListener('pointerup', e => {
+  if (_seqLoopDragActive && e.pointerId === _seqLoopDragPtrId) {
+    _seqLoopDragActive = false;
+    return;
+  }
   if (!_lpTimer) return;
   clearTimeout(_lpTimer); _lpTimer = null;
   const key = _seqCell(e);
