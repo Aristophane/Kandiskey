@@ -178,6 +178,7 @@ export const GUITAR_TUNINGS = {
   'Open D (DADF#AD)':  [38,45,50,54,57,62],
   'Open E (EBEG#BE)':  [40,47,52,56,59,64],
   'DADGAD':            [38,45,50,55,57,62],
+  'Open C (CGCGCE)':   [36,43,48,55,60,64],
 };
 
 export const FIFTHS_ORDER = [0,7,2,9,4,11,6,1,8,3,10,5];

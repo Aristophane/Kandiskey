@@ -22,7 +22,6 @@ const fbCtx    = fbCanvas.getContext('2d');
 // ── Constants ───────────────────────────────────────────────────────
 
 const NUM_FRETS        = 14;
-const STRING_NAMES_TOP = ['e','B','G','D','A','E'];
 
 // ── Chord position voicing ──────────────────────────────────────────
 
@@ -163,6 +162,7 @@ export function drawFretboard() {
     fbCanvas.style.width = W + 'px'; fbCanvas.style.height = H + 'px';
   }
   fbCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  fbCtx.clearRect(0, 0, W, H);
 
   const openStrings   = [...GUITAR_TUNINGS[S.tuning]].reverse();
   const margin        = { left: 28, right: 14, top: 16, bottom: 16 };
@@ -225,12 +225,12 @@ export function drawFretboard() {
     fbCtx.lineWidth = thickness; fbCtx.stroke();
   }
 
-  // String name labels
-  STRING_NAMES_TOP.forEach((name, s) => {
+  // String name labels (derived from active tuning)
+  openStrings.forEach((midi, s) => {
     const y = margin.top + s * stringSpacing;
     fbCtx.font = '9px system-ui'; fbCtx.textAlign = 'center'; fbCtx.textBaseline = 'middle';
     fbCtx.fillStyle = 'rgba(255,255,255,0.35)';
-    fbCtx.fillText(name, margin.left - 14, y);
+    fbCtx.fillText(CHROMATIC[midi % 12], margin.left - 14, y);
   });
 
   // Fret numbers

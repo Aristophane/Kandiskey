@@ -1545,9 +1545,26 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   /* Mobile transport FABs — inline in viz-transport row */
   #mob-btn-play, #mob-btn-pause, #mob-btn-stop {
     width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     flex-shrink: 0;
+  }
+  #mob-btn-play {
+    background: rgba(52,211,153,0.18);
+    border: 2px solid rgba(52,211,153,0.6);
+    color: #34d399;
+  }
+  #mob-btn-pause {
+    background: rgba(245,158,11,0.18);
+    border: 2px solid rgba(245,158,11,0.6);
+    color: #f59e0b;
+  }
+  #mob-btn-stop {
+    background: rgba(239,68,68,0.18);
+    border: 2px solid rgba(239,68,68,0.6);
+    color: #f87171;
   }
   .viz-transport {
     top: 12px;
