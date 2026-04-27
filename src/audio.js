@@ -167,8 +167,10 @@ export class AudioEngine {
       const osc = this.actx.createOscillator();
       if (SYNTH.waveform === 'custom' && SYNTH.customWave) {
         osc.setPeriodicWave(SYNTH.customWave);
-      } else {
+      } else if (SYNTH.waveform !== 'custom') {
         osc.type = SYNTH.waveform;
+      } else {
+        osc.type = 'sine'; // customWave not yet built, fall back gracefully
       }
       osc.frequency.value = hz;
       osc.detune.value = SYNTH.detune;

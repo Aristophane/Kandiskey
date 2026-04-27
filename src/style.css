@@ -740,7 +740,7 @@ header p { display: none; }
 .seq-val  { font-size: 0.7rem; color: var(--accent2); font-family: monospace; }
 
 /* Source mode + wave/sample bars */
-.seq-src-btn.active { background: rgba(167,139,250,0.15); border-color: rgba(167,139,250,0.45); color: var(--accent); }
+.seq-src-btn.active { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.55); color: #c4b5fd; }
 .seq-extra-bar {
   flex-shrink: 0;
   display: flex;
@@ -750,8 +750,58 @@ header p { display: none; }
   border-bottom: 1px solid var(--border);
   min-height: 62px;
 }
+/* Wave controls bar — simple horizontal strip, fixed height, always fully visible */
+.wave-ctrl-bar {
+  min-height: 40px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.wave-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wave-rough-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Wave canvas area — expands to fill remaining seq panel space when active */
+.seq-wave-canvas-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  padding: 6px 10px;
+}
+.seq-panel.wave-expand .seq-canvas-wrap {
+  display: none;
+}
+.wave-rand-sel {
+  font-size: 0.62rem;
+  padding: 2px 4px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  border-radius: 4px;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 120px;
+  cursor: pointer;
+}
+.wave-ctrl-btn {
+  font-size: 0.62rem;
+  padding: 3px 7px;
+  flex-shrink: 0;
+}
+.wave-rough-sl {
+  flex: 1;
+  min-width: 40px;
+}
 .wave-draw-cvs {
   flex: 1;
+  min-height: 52px;
+  width: 100%;
   height: 52px;
   cursor: crosshair;
   border-radius: 6px;
@@ -760,6 +810,10 @@ header p { display: none; }
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+}
+.seq-panel.wave-expand .wave-draw-cvs {
+  height: auto;
+  border-radius: 8px;
 }
 .seq-sl {
   -webkit-appearance: none; appearance: none;
@@ -771,6 +825,10 @@ header p { display: none; }
 .hdr-btn.active-drums { background: rgba(251,146,60,0.12); border-color: rgba(251,146,60,0.35); color: #fb923c; }
 .hdr-btn.active-tuner { background: rgba(167,139,250,0.14); border-color: rgba(167,139,250,0.5); color: #c4b5fd; animation: tuner-pulse 1.5s ease-in-out infinite; }
 @keyframes tuner-pulse { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 8px 2px rgba(167,139,250,0.3); } }
+#btn-save.save-flash { background: rgba(52,211,153,0.18); border-color: rgba(52,211,153,0.6); color: #34d399; animation: save-flash 0.7s ease; }
+@keyframes save-flash { 0% { transform: scale(1.08); } 60% { transform: scale(1); } 100% { transform: scale(1); } }
+#btn-save.import-mode { background: rgba(245,158,11,0.18); border-color: rgba(245,158,11,0.6); color: #fbbf24; animation: import-pulse 1s ease-in-out infinite; }
+@keyframes import-pulse { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 10px 3px rgba(245,158,11,0.35); } }
 
 /* ── MIDI BAR ── */
 .midi-bar {
@@ -975,6 +1033,18 @@ header p { display: none; }
   color: #93c5fd;
 }
 #btn-viz-mixer.active-mixer {
+  background: rgba(96,165,250,0.22);
+  border-color: rgba(96,165,250,0.7);
+  color: #dbeafe;
+}
+#btn-seq-panel-mixer,
+#btn-drum-panel-mixer {
+  background: rgba(96,165,250,0.14);
+  border-color: rgba(96,165,250,0.42);
+  color: #93c5fd;
+}
+#btn-seq-panel-mixer.active-mixer,
+#btn-drum-panel-mixer.active-mixer {
   background: rgba(96,165,250,0.22);
   border-color: rgba(96,165,250,0.7);
   color: #dbeafe;
@@ -1448,6 +1518,21 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
     min-width: 60px !important;
   }
 
+  /* Wave ctrl bar: two rows on mobile */
+  .wave-ctrl-bar {
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+  .wave-btn-row { gap: 4px; }
+  .wave-btn-row .wave-rand-sel { flex: 0 0 auto; }
+  .wave-btn-row .wave-ctrl-btn { flex: 1 1 0; min-width: 0; }
+  .wave-btn-sep { display: none; }
+  .wave-rough-row { gap: 6px; }
+  .wave-rough-sl { flex: 1 1 0; min-width: 0; }
+
   /* Solo synth: full-screen overlay */
   #solo-synth-wrap {
     position: fixed !important;
@@ -1627,6 +1712,9 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
     gap: 6px; background: transparent;
   }
   .hdr-bpm .tap-btn { display: none; }
+
+  /* Hide mute in viz-transport while playing — pause already visible */
+  body.seq-is-playing #btn-viz-mute { display: none; }
 
   /* Mobile transport FABs — inline in viz-transport row */
   #mob-btn-play, #mob-btn-pause, #mob-btn-stop {

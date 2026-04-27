@@ -179,6 +179,20 @@
         <path d="M16 8l4 4-4 4"/>
       </g>
     </symbol>
+    <symbol id="icon-save" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/>
+        <polyline points="7 3 7 8 15 8"/>
+      </g>
+    </symbol>
+    <symbol id="icon-import" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </g>
+    </symbol>
   </defs>
 </svg>
 
@@ -217,6 +231,9 @@
       </button>
       <button class="hdr-btn" id="btn-tuner" title="Chromatic tuner">
         <svg class="hdr-icon"><use href="#icon-tuner"></use></svg><span class="btn-text"> Tuner</span>
+      </button>
+      <button class="hdr-btn" id="btn-save" title="Save (double-tap to download)">
+        <svg class="hdr-icon"><use href="#icon-save"></use></svg><span class="btn-text"> Save</span>
       </button>
     </div>
   </div>
@@ -396,32 +413,41 @@
       <span class="seq-lbl">Rhythm</span>
       <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
       <div class="seq-sep"></div>
-      <span class="seq-lbl">Gate</span>
-      <input type="range" class="seq-sl" id="seq-gate" min="10" max="100" step="5" value="65" style="width:55px">
-      <span class="seq-val" id="seq-gate-val">65%</span>
+      <button class="midi-btn seq-src-btn active" id="seq-src-synth" title="Sound synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound</button>
+      <button class="midi-btn seq-src-btn" id="seq-src-wave" title="Draw waveform"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-vibrato-rate"></use></svg> Wave</button>
+      <button class="midi-btn seq-src-btn" id="seq-src-sample" title="Load sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-attack"></use></svg> Sample</button>
       <div class="seq-sep"></div>
-      <button class="midi-btn" id="btn-seq-demo" title="Load demo melody">♪ Demo</button>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Source</span>
-      <button class="midi-btn seq-src-btn active" id="seq-src-synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-wave"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-vibrato-rate"></use></svg> Wave</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-attack"></use></svg> Sample</button>
-      <div class="seq-sep"></div>
-      <button class="midi-btn" id="btn-seq-synth" title="Sound controls"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound ▾</button>
+      <span class="seq-lbl">Length</span>
+      <input type="range" class="seq-sl" id="seq-note-len" min="0" max="100" step="1" value="25" style="width:55px">
+      <span class="seq-val" id="seq-note-len-val">25</span>
+      <!-- Hidden compat: synth panel toggle wired here, triggered by Sound button -->
+      <button id="btn-seq-synth" style="display:none" title="Sound controls"></button>
     </div>
-    <!-- Wave draw bar -->
-    <div id="seq-wave-bar" class="seq-extra-bar" style="display:none">
-      <canvas id="wave-draw-cvs" class="wave-draw-cvs"></canvas>
-      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-        <button class="midi-btn" id="wave-draw-reset">↺ Reset</button>
-        <button class="midi-btn" id="wave-draw-random">🎲 Random</button>
-        <span style="font-size:0.6rem;color:rgba(255,255,255,0.28);text-align:center">draw &amp; drag</span>
+    <!-- Wave controls strip (always a fixed-height bar when wave mode is active) -->
+    <div id="seq-wave-ctrl-bar" class="seq-extra-bar wave-ctrl-bar" style="display:none">
+      <div class="wave-btn-row">
+        <select id="wave-rand-type" class="wave-rand-sel">
+          <option value="harmonic">Harmonic</option>
+          <option value="smooth">Smooth</option>
+          <option value="fm">FM</option>
+          <option value="stepped">Stepped</option>
+          <option value="spiky">Spiky</option>
+        </select>
+        <button class="midi-btn wave-ctrl-btn" id="wave-draw-random">🎲 Random</button>
+        <span class="seq-sep wave-btn-sep"></span>
+        <button class="midi-btn wave-ctrl-btn" id="wave-draw-reset">↺ Reset</button>
+        <span class="seq-sep wave-btn-sep"></span>
+        <button class="midi-btn wave-ctrl-btn" id="wave-view-toggle" title="Toggle linear / radial view">○ Radial</button>
       </div>
-      <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0;align-items:center;min-width:60px">
-        <span style="font-size:0.6rem;color:rgba(255,255,255,0.45)">Roughness</span>
-        <input type="range" id="wave-draw-roughness" min="0" max="100" step="1" value="30" style="width:60px">
+      <div class="wave-rough-row">
+        <span class="seq-lbl">Rough</span>
+        <input type="range" class="seq-sl wave-rough-sl" id="wave-draw-roughness" min="0" max="100" step="1" value="30">
         <span class="seq-val" id="wave-draw-rough-val">30%</span>
       </div>
+    </div>
+    <!-- Wave canvas area — expands to fill remaining canvas height -->
+    <div id="seq-wave-bar" class="seq-wave-canvas-area" style="display:none">
+      <canvas id="wave-draw-cvs" class="wave-draw-cvs"></canvas>
     </div>
     <!-- Sample bar -->
     <div id="seq-sample-bar" class="seq-extra-bar" style="display:none">

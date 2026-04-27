@@ -12,7 +12,7 @@ import { audio } from './audio.js';
 import {
   DRUM_GRID, drumVelocity, setDrumVelocity, drumBuffers,
   activeBankKeys, activeBankLabels,
-  activePads, setActivePad,
+  activePads, setActivePad, activeDrumBank,
   loadDrumSamples, reloadDrumBank, drawDrumMachine, scheduleDrmDraw, loadWorldRhythm,
   invalidateBankKeys,
   setSyncSend as drumSetSyncSend, setSeqEngineRef as drumSetSeqEngineRef,
@@ -25,6 +25,7 @@ import {
   setDrawFretboardCallback as seqSetDrawFretboard,
 } from './sequencer.js';
 import { SOLO_SYNTH, soloMode, soloOctave, setSoloMode, setSoloOctave, renderSoloPads, playTonnetzNote, playTonnetzChord } from './solo.js';
+import { captureState, saveToFile, loadFromFile, saveClip, getClips, deleteClip, autosaveToCache, autoloadFromCache } from './project.js';
 
 import {
   draw, addRipple, canvas, ctx, vizPanel, playChordNow,
@@ -114,6 +115,11 @@ function syncPlayUI(state) {
   });
   ['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state !== 'stopped' ? '' : 'none';
+  });
+  document.body.classList.toggle('seq-is-playing', state === 'playing');
+  ['btn-seq-panel-mute', 'btn-drum-panel-mute'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = state === 'playing' ? 'none' : '';
   });
 }
 
@@ -883,6 +889,37 @@ document.getElementById('sel-scale').addEventListener('change', function () {
 function fmtHz(v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'kHz' : v + 'Hz'; }
 function fmtMs(v) { return v >= 1000 ? (v / 1000).toFixed(2) + 's' : v + 'ms'; }
 
+// Combined length param (0-100): drives gate + SYNTH decay + SYNTH sustain.
+// 0–70  → sub-step (gate 0.08→1.0, staccato to full step)
+// 70–100 → overlap (gate 1.0→4.0, note bleeds into following steps)
+function noteLenToParams(v) {
+  const t = v / 100;
+  let gate;
+  if (t <= 0.70) {
+    gate = 0.08 + (t / 0.70) * 0.92;          // 0.08 → 1.00
+  } else {
+    gate = 1.0 + ((t - 0.70) / 0.30) * 3.0;  // 1.00 → 4.00
+  }
+  return {
+    gate,
+    decayMs:    Math.round(50 * Math.pow(80, t) / 10) * 10,  // 50ms → 4000ms
+    sustainPct: Math.round(Math.max(0, t * 95 - 8)),          // 0 → 87%
+  };
+}
+
+function applyNoteLen(v) {
+  SEQ.noteLen = v;
+  const p = noteLenToParams(v);
+  SEQ.gate        = p.gate;
+  SYNTH.decay     = p.decayMs / 1000;
+  SYNTH.sustain   = p.sustainPct / 100;
+  // Sync synth panel sliders so they reflect the derived values
+  const decSl = document.getElementById('syn-decay');    if (decSl) decSl.value = p.decayMs;
+  const decVl = document.getElementById('syn-dec-val');  if (decVl) decVl.textContent = fmtMs(p.decayMs);
+  const susSl = document.getElementById('syn-sustain');  if (susSl) susSl.value = p.sustainPct;
+  const susVl = document.getElementById('syn-sus-val');  if (susVl) susVl.textContent = p.sustainPct + '%';
+}
+
 function applySynthPreset(name) {
   const p = PRESETS[name];
   Object.assign(SYNTH, p);
@@ -965,45 +1002,103 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
 });
 
 // ── SEQUENCER SOURCE MODE ─────────────────────────────────────────────
+// _waveIO bridges the initSeqSource closure to applyProjectSnapshot.
+const _waveIO = {};
 
 (function initSeqSource() {
   function setSourceMode(mode) {
     SYNTH.sourceMode = mode;
     document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('seq-src-' + mode).classList.add('active');
-    document.getElementById('seq-wave-bar').style.display = mode === 'wave' ? 'flex' : 'none';
+    const seqPanel = document.querySelector('#seq-wrap .seq-panel');
+    const waveExpand = mode === 'wave';
+    if (seqPanel) seqPanel.classList.toggle('wave-expand', waveExpand);
+    document.getElementById('seq-wave-ctrl-bar').style.display = waveExpand ? 'flex' : 'none';
+    document.getElementById('seq-wave-bar').style.display = waveExpand ? 'flex' : 'none';
     document.getElementById('seq-sample-bar').style.display = mode === 'sample' ? 'flex' : 'none';
-    if (mode === 'wave') requestAnimationFrame(renderWaveDraw);
+    if (waveExpand) {
+      requestAnimationFrame(renderWaveDraw);
+      // On mobile, collapse the params drawer so the wave canvas gets full height
+      if (window.innerWidth <= 768) {
+        const drawer = document.getElementById('seq-params-drawer');
+        const btn    = document.getElementById('btn-seq-params');
+        if (drawer) drawer.classList.remove('open');
+        if (btn)    { btn.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
+      }
+    }
     scheduleWaveCanvasAnimation();
   }
 
-  ['synth', 'wave', 'sample'].forEach(m =>
-    document.getElementById('seq-src-' + m).addEventListener('click', () => setSourceMode(m))
-  );
+  ['synth', 'wave', 'sample'].forEach(m => {
+    document.getElementById('seq-src-' + m).addEventListener('click', () => {
+      // Toggle: clicking active wave/sample source collapses it back to synth
+      if ((m === 'wave' || m === 'sample') && SYNTH.sourceMode === m) {
+        setSourceMode('synth');
+      } else {
+        setSourceMode(m);
+        // Sound button also opens the synth panel
+        if (m === 'synth') document.getElementById('btn-seq-synth')?.click();
+      }
+    });
+  });
 
   const WN = 512;
   let waveSamples = new Float32Array(WN);
   let waveApplyTimer = null;
+  let waveViewMode = 'linear'; // 'linear' | 'radial'
+
+  // Polar geometry helper — shared by render and drawAt
+  function _polarGeom(el) {
+    const w = el.offsetWidth || 300;
+    const h = Math.max(100, el.offsetHeight || 100);
+    const cx = w / 2, cy = h / 2;
+    const R   = Math.min(w, h) * 0.30;
+    const amp = R * 0.55;
+    return { w, h, cx, cy, R, amp };
+  }
 
   function renderWaveDraw() {
     const cvs = document.getElementById('wave-draw-cvs');
     if (!cvs) return;
-    const w = cvs.offsetWidth || 300;
-    cvs.width = w; cvs.height = 52;
     const wctx = cvs.getContext('2d');
-    wctx.clearRect(0, 0, w, 52);
-    wctx.strokeStyle = 'rgba(167,139,250,0.1)'; wctx.lineWidth = 1;
-    wctx.beginPath(); wctx.moveTo(0, 26); wctx.lineTo(w, 26); wctx.stroke();
-    [13, 39].forEach(y => {
-      wctx.beginPath(); wctx.moveTo(0, y); wctx.lineTo(w, y); wctx.stroke();
-    });
-    wctx.beginPath();
-    for (let x = 0; x <= w; x++) {
-      const si = Math.min(WN - 1, Math.floor((x / w) * WN));
-      const y = 26 - waveSamples[si] * 22;
-      x === 0 ? wctx.moveTo(x, y) : wctx.lineTo(x, y);
+
+    if (waveViewMode === 'linear') {
+      const w = cvs.offsetWidth || 300;
+      const h = Math.max(52, cvs.offsetHeight || 52);
+      cvs.width = w; cvs.height = h;
+      const mid = h / 2, amp = h * 0.42;
+      wctx.clearRect(0, 0, w, h);
+      wctx.strokeStyle = 'rgba(167,139,250,0.08)'; wctx.lineWidth = 1;
+      wctx.beginPath(); wctx.moveTo(0, mid); wctx.lineTo(w, mid); wctx.stroke();
+      [mid - amp * 0.5, mid + amp * 0.5].forEach(y => {
+        wctx.beginPath(); wctx.moveTo(0, y); wctx.lineTo(w, y); wctx.stroke();
+      });
+      wctx.beginPath();
+      for (let x = 0; x <= w; x++) {
+        const si = Math.min(WN - 1, Math.floor((x / w) * WN));
+        const y  = mid - waveSamples[si] * amp;
+        x === 0 ? wctx.moveTo(x, y) : wctx.lineTo(x, y);
+      }
+      wctx.strokeStyle = '#a78bfa'; wctx.lineWidth = 2; wctx.stroke();
+    } else {
+      const { w, h, cx, cy, R, amp } = _polarGeom(cvs);
+      cvs.width = w; cvs.height = h;
+      wctx.clearRect(0, 0, w, h);
+      wctx.strokeStyle = 'rgba(167,139,250,0.08)'; wctx.lineWidth = 1;
+      [R - amp * 0.5, R, R + amp * 0.5].forEach(r => {
+        wctx.beginPath(); wctx.arc(cx, cy, Math.max(2, r), 0, Math.PI * 2); wctx.stroke();
+      });
+      wctx.beginPath();
+      for (let i = 0; i <= WN; i++) {
+        const theta = (i / WN) * Math.PI * 2 - Math.PI / 2;
+        const r = R + waveSamples[i % WN] * amp;
+        const x = cx + r * Math.cos(theta);
+        const y = cy + r * Math.sin(theta);
+        i === 0 ? wctx.moveTo(x, y) : wctx.lineTo(x, y);
+      }
+      wctx.closePath();
+      wctx.strokeStyle = '#a78bfa'; wctx.lineWidth = 2; wctx.stroke();
     }
-    wctx.strokeStyle = '#a78bfa'; wctx.lineWidth = 2; wctx.stroke();
   }
 
   function scheduleApply() {
@@ -1043,16 +1138,44 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
 
   function drawAt(cvs, clientX, clientY) {
     const rect = cvs.getBoundingClientRect();
-    const xr = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const yr = Math.max(-1, Math.min(1, (rect.top + 26 - clientY) / 22));
-    const si = Math.floor(xr * WN);
-    if (drawAt._lastSi !== undefined) {
-      const d = si - drawAt._lastSi;
-      if (Math.abs(d) > 1) {
-        for (let i = 1; i < Math.abs(d); i++) {
-          const s = drawAt._lastSi + Math.sign(d) * i;
-          if (s >= 0 && s < WN)
+    let si, yr;
+
+    if (waveViewMode === 'linear') {
+      const h   = rect.height || 52;
+      const mid = h / 2, amp = h * 0.42;
+      const xr  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      yr = Math.max(-1, Math.min(1, (rect.top + mid - clientY) / amp));
+      si = Math.floor(xr * WN);
+      if (drawAt._lastSi !== undefined) {
+        const d = si - drawAt._lastSi;
+        if (Math.abs(d) > 1) {
+          for (let i = 1; i < Math.abs(d); i++) {
+            const s = drawAt._lastSi + Math.sign(d) * i;
+            if (s >= 0 && s < WN)
+              waveSamples[s] = drawAt._lastYr + (yr - drawAt._lastYr) * (i / Math.abs(d));
+          }
+        }
+      }
+    } else {
+      const mock = { offsetWidth: rect.width, offsetHeight: rect.height };
+      const { cx: gcx, cy: gcy, R, amp } = _polarGeom(mock);
+      const cx = rect.left + gcx, cy = rect.top + gcy;
+      const dx = clientX - cx, dy = clientY - cy;
+      let theta = Math.atan2(dy, dx) + Math.PI / 2;
+      if (theta < 0) theta += Math.PI * 2;
+      if (theta >= Math.PI * 2) theta -= Math.PI * 2;
+      si = Math.floor((theta / (Math.PI * 2)) * WN) % WN;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      yr = Math.max(-1, Math.min(1, (dist - R) / amp));
+      if (drawAt._lastSi !== undefined) {
+        let d = si - drawAt._lastSi;
+        if (d >  WN / 2) d -= WN;
+        if (d < -WN / 2) d += WN;
+        if (Math.abs(d) > 1) {
+          for (let i = 1; i < Math.abs(d); i++) {
+            const s = ((drawAt._lastSi + Math.sign(d) * i) + WN) % WN;
             waveSamples[s] = drawAt._lastYr + (yr - drawAt._lastYr) * (i / Math.abs(d));
+          }
         }
       }
     }
@@ -1073,34 +1196,122 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
     waveSamples.fill(0); SYNTH.customWave = null; SYNTH.waveform = 'sine'; renderWaveDraw();
   });
 
+  document.getElementById('wave-view-toggle').addEventListener('click', function () {
+    waveViewMode = waveViewMode === 'linear' ? 'radial' : 'linear';
+    this.textContent = waveViewMode === 'linear' ? '— Linear' : '○ Radial';
+    renderWaveDraw();
+  });
+
   document.getElementById('wave-draw-roughness').addEventListener('input', function () {
     document.getElementById('wave-draw-rough-val').textContent = this.value + '%';
   });
 
-  document.getElementById('wave-draw-random').addEventListener('click', () => {
+  // ── Wave generators ──────────────────────────────────────────────────
+  const WAVE_GENS = {
+    harmonic(n, r) {
+      const numH = Math.round(3 + r * 29), falloff = 2.0 - r * 1.7;
+      const amps = [], phases = [];
+      for (let k = 0; k < numH; k++) {
+        amps.push((1 / Math.pow(k + 1, falloff)) * (0.5 + 0.5 * Math.random()));
+        phases.push(Math.random() * Math.PI * 2);
+      }
+      const s = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let v = 0;
+        for (let k = 0; k < numH; k++) v += amps[k] * Math.sin((k+1) * 2*Math.PI*i/n + phases[k]);
+        s[i] = v;
+      }
+      return s;
+    },
+    smooth(n, r) {
+      // Cosine-interpolated random control points (Perlin-like)
+      const numPts = Math.max(3, Math.round(3 + r * 25));
+      const pts = Array.from({length: numPts}, () => Math.random() * 2 - 1);
+      const s = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const t = (i / n) * numPts;
+        const i0 = Math.floor(t) % numPts, i1 = (i0 + 1) % numPts;
+        const mu = (1 - Math.cos((t - Math.floor(t)) * Math.PI)) / 2;
+        s[i] = pts[i0] * (1 - mu) + pts[i1] * mu;
+      }
+      return s;
+    },
+    fm(n, r) {
+      // FM synthesis: carrier modulated by random LFO harmonics
+      const modDepth = 0.5 + r * 12;
+      const modFreq  = 1 + Math.round(r * 8);
+      const mp = Math.random() * Math.PI * 2, cp = Math.random() * Math.PI * 2;
+      const s = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const mod = modDepth * Math.sin(modFreq * 2*Math.PI*i/n + mp);
+        s[i] = Math.sin(2*Math.PI*i/n + mod + cp);
+      }
+      return s;
+    },
+    stepped(n, r) {
+      // Random sample-and-hold segments with optional glide
+      const numSteps = Math.max(2, Math.round(2 + r * 20));
+      const glide = (1 - r) * 0.35;
+      const stepVals = Array.from({length: numSteps}, () => Math.random() * 2 - 1);
+      const s = new Float32Array(n);
+      const sw = n / numSteps;
+      for (let i = 0; i < n; i++) {
+        const t   = i / sw;
+        const st  = Math.floor(t);
+        const frac = t - st;
+        const v0  = stepVals[st % numSteps];
+        const v1  = stepVals[(st + 1) % numSteps];
+        const blend = frac < glide ? frac / glide : 0;
+        s[i] = v0 + (v1 - v0) * Math.min(1, blend);
+      }
+      return s;
+    },
+    spiky(n, r) {
+      // Narrow gaussian impulses at random positions
+      const numSpikes = Math.max(1, Math.round(1 + r * 14));
+      const width = Math.max(3, Math.round(n * (0.09 - r * 0.08)));
+      const s = new Float32Array(n);
+      for (let k = 0; k < numSpikes; k++) {
+        const pos = Math.floor(Math.random() * n);
+        const h   = (0.4 + 0.6 * Math.random()) * (Math.random() < 0.5 ? 1 : -1);
+        for (let i = 0; i < n; i++) {
+          let d = Math.abs(i - pos); if (d > n/2) d = n - d;
+          if (d < width * 3) {
+            const g = Math.exp(-(d * d) / (2 * width * width));
+            s[i] += h * g;
+          }
+        }
+      }
+      return s;
+    },
+  };
+
+  function generateRandomWave() {
     const roughness = parseFloat(document.getElementById('wave-draw-roughness').value) / 100;
-    const numH = Math.round(3 + roughness * 29);
-    const falloff = 2.0 - roughness * 1.7;
-    const amps = [], phases = [];
-    for (let k = 0; k < numH; k++) {
-      amps.push((1 / Math.pow(k + 1, falloff)) * (0.5 + 0.5 * Math.random()));
-      phases.push(Math.random() * Math.PI * 2);
-    }
+    const type = document.getElementById('wave-rand-type')?.value || 'harmonic';
+    const gen = WAVE_GENS[type] || WAVE_GENS.harmonic;
+    const raw = gen(WN, roughness);
     let maxAbs = 0;
-    for (let i = 0; i < WN; i++) {
-      let v = 0;
-      for (let k = 0; k < numH; k++) v += amps[k] * Math.sin((k + 1) * 2 * Math.PI * i / WN + phases[k]);
-      waveSamples[i] = v;
-      maxAbs = Math.max(maxAbs, Math.abs(v));
-    }
-    if (maxAbs > 0) for (let i = 0; i < WN; i++) waveSamples[i] /= maxAbs;
-    SYNTH.sourceMode = 'wave';
-    document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('seq-src-wave').classList.add('active');
-    document.getElementById('seq-wave-bar').style.display = 'flex';
-    document.getElementById('seq-sample-bar').style.display = 'none';
+    for (let i = 0; i < WN; i++) maxAbs = Math.max(maxAbs, Math.abs(raw[i]));
+    for (let i = 0; i < WN; i++) waveSamples[i] = maxAbs > 0.001 ? raw[i] / maxAbs : 0;
+    setSourceMode('wave');
     renderWaveDraw(); scheduleApply();
-  });
+  }
+
+  document.getElementById('wave-draw-random').addEventListener('click', generateRandomWave);
+
+  // Boot with harmonic noise at roughness 40
+  (function () {
+    const roughnessSl = document.getElementById('wave-draw-roughness');
+    if (roughnessSl) roughnessSl.value = 29;
+    const roughValEl = document.getElementById('wave-draw-rough-val');
+    if (roughValEl) roughValEl.textContent = '29%';
+    const raw = WAVE_GENS.harmonic(WN, 0.29);
+    let maxAbs = 0;
+    for (let i = 0; i < WN; i++) maxAbs = Math.max(maxAbs, Math.abs(raw[i]));
+    for (let i = 0; i < WN; i++) waveSamples[i] = maxAbs > 0.001 ? raw[i] / maxAbs : 0;
+    scheduleApply();
+  })();
 
   const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const sampleRootSel = document.getElementById('sample-root-note');
@@ -1129,6 +1340,44 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
     };
     reader.readAsArrayBuffer(file);
   });
+
+  // When the params drawer is toggled, collapse/expand the wave & sample bars with it.
+  // setupDrawer's handler runs first so by the time this fires the class is already updated.
+  document.getElementById('btn-seq-params')?.addEventListener('click', () => {
+    const mode = SYNTH.sourceMode;
+    if (mode !== 'wave' && mode !== 'sample') return;
+    const drawer    = document.getElementById('seq-params-drawer');
+    const isPhone   = window.innerWidth <= 768;
+    const drawerOpen = isPhone
+      ? drawer?.classList.contains('open')
+      : !drawer?.classList.contains('closed');
+    const d = drawerOpen ? 'flex' : 'none';
+    if (mode === 'wave') {
+      document.getElementById('seq-wave-ctrl-bar').style.display = d;
+      document.getElementById('seq-wave-bar').style.display = d;
+      document.querySelector('#seq-wrap .seq-panel')?.classList.toggle('wave-expand', drawerOpen);
+      if (drawerOpen) requestAnimationFrame(renderWaveDraw);
+    } else {
+      document.getElementById('seq-sample-bar').style.display = d;
+    }
+  });
+
+  // Expose closure state to applyProjectSnapshot via _waveIO
+  _waveIO.getState = () => ({ samples: Array.from(waveSamples), viewMode: waveViewMode });
+  _waveIO.applyState = (state) => {
+    if (Array.isArray(state?.samples) && state.samples.length === WN) {
+      waveSamples.set(state.samples);
+    }
+    if (state?.viewMode && (state.viewMode === 'linear' || state.viewMode === 'radial')) {
+      waveViewMode = state.viewMode;
+      const btn = document.getElementById('wave-view-toggle');
+      if (btn) btn.textContent = waveViewMode === 'radial' ? '— Linear' : '○ Radial';
+    }
+    renderWaveDraw();
+    scheduleApply();
+  };
+  _waveIO.setSourceMode = setSourceMode;
+
 })();
 
 // ── SEQUENCER WIRING ─────────────────────────────────────────────────
@@ -1377,13 +1626,12 @@ document.getElementById('seq-bpm').addEventListener('change', function () {
   else Sync.send({ type: 'SEQ_PARAM', masterBpm });
 });
 
-document.getElementById('seq-gate').addEventListener('input', function () {
-  SEQ.gate = parseInt(this.value) / 100;
-  document.getElementById('seq-gate-val').textContent = parseInt(this.value) + '%';
-  Sync.send({ type: 'SEQ_PARAM', gate: SEQ.gate });
+document.getElementById('seq-note-len').addEventListener('input', function () {
+  const v = parseInt(this.value);
+  document.getElementById('seq-note-len-val').textContent = v;
+  applyNoteLen(v);
+  Sync.send({ type: 'SEQ_PARAM', noteLen: v, gate: SEQ.gate });
 });
-
-document.getElementById('btn-seq-demo').addEventListener('click', () => seqLoadDemo());
 document.getElementById('btn-seq-panel-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
 ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => triggerSequencerPlay());
@@ -1504,8 +1752,10 @@ document.querySelectorAll('.wave-cvs').forEach(cvs => {
     document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
     const synthBtn = document.getElementById('seq-src-synth');
     if (synthBtn) synthBtn.classList.add('active');
+    document.getElementById('seq-wave-ctrl-bar').style.display = 'none';
     document.getElementById('seq-wave-bar').style.display = 'none';
     document.getElementById('seq-sample-bar').style.display = 'none';
+    document.querySelector('#seq-wrap .seq-panel')?.classList.remove('wave-expand');
     document.querySelectorAll('.wave-cvs').forEach(c => c.classList.remove('active'));
     cvs.classList.add('active');
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
@@ -2168,6 +2418,7 @@ function syncGetFullState() {
   return {
     bpm: SEQ.bpm,
     rhythmKey: SEQ.rhythmKey,
+    noteLen: SEQ.noteLen,
     gate: SEQ.gate,
     loopLen: SEQ.loopLen,
     grid: { ...SEQ.grid },
@@ -2187,7 +2438,8 @@ function syncTransportAnchor(msg) {
 function syncApplyFullState(msg) {
   if (msg.bpm !== undefined) SEQ.bpm = msg.bpm;
   if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
-  if (msg.gate !== undefined) SEQ.gate = msg.gate;
+  if (msg.noteLen !== undefined) applyNoteLen(msg.noteLen);
+  else if (msg.gate !== undefined) SEQ.gate = msg.gate; // legacy peers
   if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
   if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
   if (msg.grid) SEQ.grid = { ...msg.grid };
@@ -2206,10 +2458,9 @@ function syncUpdateUI(msg) {
   if (msg.rhythmKey !== undefined) {
     const sel = document.getElementById('seq-rhythm'); if (sel) sel.value = msg.rhythmKey;
   }
-  if (msg.gate !== undefined) {
-    const pct = Math.round(msg.gate * 100);
-    const sl = document.getElementById('seq-gate'); if (sl) sl.value = pct;
-    const vl = document.getElementById('seq-gate-val'); if (vl) vl.textContent = pct + '%';
+  if (msg.noteLen !== undefined) {
+    const sl = document.getElementById('seq-note-len'); if (sl) sl.value = msg.noteLen;
+    const vl = document.getElementById('seq-note-len-val'); if (vl) vl.textContent = msg.noteLen;
   }
 }
 
@@ -2263,7 +2514,8 @@ function syncHandleMessage(msg) {
     case 'SEQ_PARAM':
       if (msg.masterBpm !== undefined) applyPeerBpm(msg.masterBpm);
       if (msg.rhythmKey !== undefined) SEQ.rhythmKey = msg.rhythmKey;
-      if (msg.gate !== undefined) SEQ.gate = msg.gate;
+      if (msg.noteLen !== undefined) applyNoteLen(msg.noteLen);
+      else if (msg.gate !== undefined) SEQ.gate = msg.gate;
       if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
       if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
       syncUpdateUI(msg);
@@ -2421,6 +2673,310 @@ function syncHandleMessage(msg) {
   );
 })();
 
+// ── PROJECT SAVE / LOAD ───────────────────────────────────────────────
+
+function getMixerState() {
+  const qf = id => { const el = document.getElementById(id); return el ? parseFloat(el.value) : undefined; };
+  const activeType = document.querySelector('[data-type].active');
+  return {
+    melody:    qf('mix-melody'),
+    drums:     qf('mix-drums'),
+    master:    qf('mix-master'),
+    reverb:    qf('mix-reverb'),
+    dist:      qf('mix-dist'),
+    delayWet:  qf('mix-delay-wet'),
+    delayTime: qf('mix-delay-time'),
+    delayFb:   qf('mix-delay-fb'),
+    gfltCut:   qf('mix-gflt-cut'),
+    gfltRes:   qf('mix-gflt-res'),
+    gfltType:  activeType ? activeType.dataset.type : 'lowpass',
+  };
+}
+
+function getDrumState() {
+  return {
+    bank:       activeDrumBank,
+    activePads: [...activePads],
+    loopLen:    drumLoopLen,
+    velocity:   drumVelocity,
+    grid:       { ...DRUM_GRID },
+  };
+}
+
+function _setSliderAndFire(id, val) {
+  const el = document.getElementById(id);
+  if (!el || val === undefined) return;
+  el.value = val;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function _syncSynthUi(p, prefix) {
+  const set = (slId, lblId, slVal, lblText) => {
+    const sl = document.getElementById(slId); if (sl) sl.value = slVal;
+    const lb = document.getElementById(lblId); if (lb) lb.textContent = lblText;
+  };
+  set(prefix+'attack',    prefix+'atk-val', Math.round(p.attack * 1000),  fmtMs(Math.round(p.attack * 1000)));
+  set(prefix+'decay',     prefix+'dec-val', Math.round(p.decay * 1000),   fmtMs(Math.round(p.decay * 1000)));
+  set(prefix+'filter',    prefix+'flt-val', p.filterFreq,                 fmtHz(p.filterFreq));
+  set(prefix+'res',       prefix+'res-val', p.filterQ,                    p.filterQ.toFixed(1));
+  set(prefix+'vib-rate',  prefix+'vbr-val', p.vibratoRate,                p.vibratoRate.toFixed(1)+'Hz');
+  set(prefix+'vib-depth', prefix+'vbd-val', p.vibratoDepth,               p.vibratoDepth+'¢');
+  set(prefix+'sustain',   prefix+'sus-val', Math.round(p.sustain * 100),  Math.round(p.sustain * 100)+'%');
+  set(prefix+'detune',    prefix+'det-val', p.detune ?? 0,                (p.detune ?? 0)+'¢');
+}
+
+function applyProjectSnapshot(snap) {
+  if (!snap || snap.version !== 1) {
+    console.warn('[project] Unsupported version:', snap?.version);
+    return;
+  }
+
+  // Scale
+  if (snap.scale) {
+    Object.assign(S, snap.scale);
+    const el = id => document.getElementById(id);
+    if (el('sel-family'))      el('sel-family').value      = S.family;
+    if (el('mob-family-sel'))  el('mob-family-sel').value  = S.family;
+    buildScaleSelect();
+    populateScaleSelect('mob-scale-sel');
+    if (el('sel-scale'))       el('sel-scale').value       = S.scaleName;
+    if (el('mob-scale-sel'))   el('mob-scale-sel').value   = S.scaleName;
+    if (el('sel-temperament')) el('sel-temperament').value = S.temp;
+    if (el('mob-temp-sel'))    el('mob-temp-sel').value    = S.temp;
+    if (el('temp-desc') && TEMPERAMENTS[S.temp]) el('temp-desc').textContent = TEMPERAMENTS[S.temp].desc;
+    updateOctaveLabel();
+    refreshRootUi();
+    syncScalePickerUi();
+  }
+
+  // Sequencer
+  if (snap.sequencer) {
+    const { grid, ...seqMeta } = snap.sequencer;
+    Object.assign(SEQ, seqMeta);
+    SEQ.grid = grid ? { ...grid } : {};
+    const bpmSl = document.getElementById('seq-bpm');
+    const bpmVl = document.getElementById('seq-bpm-val');
+    if (bpmSl) bpmSl.value = SEQ.bpm;
+    if (bpmVl) bpmVl.textContent = SEQ.bpm;
+    const lenSl = document.getElementById('seq-note-len');
+    const lenVl = document.getElementById('seq-note-len-val');
+    if (lenSl) lenSl.value = SEQ.noteLen;
+    if (lenVl) lenVl.textContent = SEQ.noteLen;
+    applyNoteLen(SEQ.noteLen);
+    const rhythmSel = document.getElementById('seq-rhythm');
+    if (rhythmSel) rhythmSel.value = SEQ.rhythmKey;
+    syncVizBpmUi();
+    scheduleDrawSequencer();
+  }
+
+  // Melody synth
+  if (snap.synth) {
+    const { sampleBuffer: _sb, customWave: _cw, ...synthData } = snap.synth;
+    Object.assign(SYNTH, synthData);
+    SYNTH.sampleBuffer = null;
+    SYNTH.customWave   = null;
+    _syncSynthUi(SYNTH, 'syn-');
+    const harmSl = document.getElementById('syn-harmonics');
+    const harmVl = document.getElementById('syn-harm-val');
+    if (harmSl) harmSl.value = SYNTH.numHarmonics ?? 6;
+    if (harmVl) harmVl.textContent = SYNTH.numHarmonics ?? 6;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    withAudio(() => audio.applyFilter());
+  }
+
+  // Wave draw samples + view mode — must run after synth so customWave is rebuilt
+  if (snap.wave && _waveIO.applyState) {
+    _waveIO.applyState(snap.wave);
+  }
+
+  // Source mode buttons (synth / wave / sample)
+  if (_waveIO.setSourceMode) _waveIO.setSourceMode(SYNTH.sourceMode);
+
+  // Solo synth
+  if (snap.soloSynth) {
+    Object.assign(SOLO_SYNTH, snap.soloSynth);
+    _syncSynthUi(SOLO_SYNTH, 'solo-syn-');
+  }
+  if (snap.solo) {
+    if (snap.solo.mode !== undefined) {
+      setSoloMode(snap.solo.mode);
+      document.getElementById('solo-mode-chords')?.classList.toggle('active', soloMode === 'chords');
+      document.getElementById('solo-mode-notes')?.classList.toggle('active',  soloMode === 'notes');
+    }
+    if (snap.solo.octave !== undefined) setSoloOctave(snap.solo.octave);
+  }
+
+  // Drums
+  if (snap.drums) {
+    const d = snap.drums;
+    for (const k of Object.keys(DRUM_GRID)) delete DRUM_GRID[k];
+    if (d.grid) Object.assign(DRUM_GRID, d.grid);
+    if (Array.isArray(d.activePads)) d.activePads.forEach((key, i) => setActivePad(i, key));
+    if (d.velocity !== undefined) {
+      setDrumVelocity(d.velocity);
+      const velSl = document.getElementById('drum-vel');
+      const velVl = document.getElementById('drum-vel-val');
+      if (velSl) velSl.value = Math.round(d.velocity * 100);
+      if (velVl) velVl.textContent = Math.round(d.velocity * 100) + '%';
+    }
+    if (d.loopLen !== undefined) setDrumLoopLen(d.loopLen);
+    if (d.bank && d.bank !== activeDrumBank) {
+      const bankSel = document.getElementById('drum-bank-sel');
+      if (bankSel) bankSel.value = d.bank;
+      reloadDrumBank(d.bank, () => { invalidateBankKeys(); scheduleDrmDraw(); });
+    } else {
+      invalidateBankKeys();
+      scheduleDrmDraw();
+    }
+  }
+
+  // Mixer — input events let existing audio wiring react
+  if (snap.mixer) {
+    const mx = snap.mixer;
+    _setSliderAndFire('mix-melody',     mx.melody);
+    _setSliderAndFire('mix-drums',      mx.drums);
+    _setSliderAndFire('mix-master',     mx.master);
+    _setSliderAndFire('mix-reverb',     mx.reverb);
+    _setSliderAndFire('mix-dist',       mx.dist);
+    _setSliderAndFire('mix-delay-wet',  mx.delayWet);
+    _setSliderAndFire('mix-delay-time', mx.delayTime);
+    _setSliderAndFire('mix-delay-fb',   mx.delayFb);
+    _setSliderAndFire('mix-gflt-cut',   mx.gfltCut);
+    _setSliderAndFire('mix-gflt-res',   mx.gfltRes);
+    if (mx.gfltType) {
+      document.querySelectorAll('[data-type]').forEach(b =>
+        b.classList.toggle('active', b.dataset.type === mx.gfltType));
+      withAudio(() => { if (audio.globalFilter) audio.globalFilter.type = mx.gfltType; });
+    }
+  }
+
+  updateInfo();
+  draw();
+  if (S.fretboardOpen) scheduleDrawFretboard();
+}
+
+// Exposed on window so future UI buttons and the browser console can call them.
+window.Project = {
+  save(name) {
+    const snap = captureState({ getMixerState, getDrumState, getWaveState: () => _waveIO.getState?.() });
+    if (name) snap.meta.name = name;
+    saveToFile(snap, snap.meta.name);
+  },
+  async load() {
+    const snap = await loadFromFile();
+    applyProjectSnapshot(snap);
+    return snap;
+  },
+  saveSeqClip(name) {
+    return saveClip('seq', SEQ.grid, SEQ.loopLen, name);
+  },
+  saveDrumClip(name) {
+    return saveClip('drums', DRUM_GRID, drumLoopLen, name);
+  },
+  applySeqClip(clip) {
+    SEQ.grid = { ...clip.grid };
+    if (clip.loopLen !== undefined) SEQ.loopLen = clip.loopLen;
+    scheduleDrawSequencer();
+  },
+  applyDrumClip(clip) {
+    for (const k of Object.keys(DRUM_GRID)) delete DRUM_GRID[k];
+    Object.assign(DRUM_GRID, clip.grid);
+    if (clip.loopLen !== undefined) setDrumLoopLen(clip.loopLen);
+    scheduleDrmDraw();
+  },
+  getClips,
+  deleteClip,
+  autosave() {
+    const snap = captureState({ getMixerState, getDrumState, getWaveState: () => _waveIO.getState?.() });
+    autosaveToCache(snap);
+    return snap;
+  },
+  restore() {
+    const snap = autoloadFromCache();
+    if (snap) applyProjectSnapshot(snap);
+    return snap;
+  },
+};
+
+// ── Save button ───────────────────────────────────────────────────────
+// Single click → cache (localStorage). Double click/tap → download file.
+// Long hold (600 ms) → enter import mode (yellow arrow); click → import from file.
+
+(function initSaveBtn() {
+  const btn = document.getElementById('btn-save');
+  if (!btn) return;
+  const useEl   = btn.querySelector('use');
+  const textEl  = btn.querySelector('.btn-text');
+  let clickTimer    = null;
+  let longTimer     = null;
+  let suppressClick = false;
+  let importMode    = false;
+
+  function flashSaved() {
+    btn.classList.remove('save-flash');
+    void btn.offsetWidth;
+    btn.classList.add('save-flash');
+    setTimeout(() => btn.classList.remove('save-flash'), 700);
+  }
+
+  function enterImportMode() {
+    importMode = true;
+    btn.classList.add('import-mode');
+    if (useEl)  useEl.setAttribute('href', '#icon-import');
+    if (textEl) textEl.textContent = ' Import';
+    btn.title = 'Tap to import a project file';
+  }
+
+  function exitImportMode() {
+    importMode = false;
+    btn.classList.remove('import-mode');
+    if (useEl)  useEl.setAttribute('href', '#icon-save');
+    if (textEl) textEl.textContent = ' Save';
+    btn.title = 'Save (double-tap to download)';
+  }
+
+  btn.addEventListener('pointerdown', () => {
+    longTimer = setTimeout(() => {
+      longTimer     = null;
+      suppressClick = true;
+      if (importMode) exitImportMode(); else enterImportMode();
+    }, 600);
+  });
+
+  function cancelLong() {
+    if (longTimer) { clearTimeout(longTimer); longTimer = null; }
+  }
+  btn.addEventListener('pointerup',    cancelLong);
+  btn.addEventListener('pointerleave', cancelLong);
+
+  btn.addEventListener('click', () => {
+    if (suppressClick) { suppressClick = false; return; }
+
+    if (importMode) {
+      exitImportMode();
+      loadFromFile().then(snap => applyProjectSnapshot(snap)).catch(() => {});
+      return;
+    }
+
+    if (clickTimer) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+      const snap = captureState({ getMixerState, getDrumState, getWaveState: () => _waveIO.getState?.() });
+      saveToFile(snap, snap.meta.name || 'project');
+    } else {
+      clickTimer = setTimeout(() => {
+        clickTimer = null;
+        autosaveToCache(captureState({ getMixerState, getDrumState, getWaveState: () => _waveIO.getState?.() }));
+        flashSaved();
+      }, 300);
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (importMode && !btn.contains(e.target)) exitImportMode();
+  });
+})();
+
 // ── INIT ──────────────────────────────────────────────────────────────
 
 buildNoteGrid('root-grid', 'root');
@@ -2433,3 +2989,7 @@ buildTuningSelect();
 updateInfo();
 seqLoadDemo();
 requestAnimationFrame(() => requestAnimationFrame(resize));
+
+// Restore last autosaved project on load
+const _restored = autoloadFromCache();
+if (_restored) applyProjectSnapshot(_restored);

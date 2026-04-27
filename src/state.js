@@ -39,7 +39,8 @@ export const S = {
 export const SEQ = {
   bpm:       120,
   rhythmKey: '16 steps',
-  gate:      0.65,
+  noteLen:   25,    // 0-100 combined length param → drives gate + SYNTH.decay + SYNTH.sustain
+  gate:      0.30,  // derived from noteLen; read directly by sequencer engine
   grid:      {},
   loopLen:   16,
 };
