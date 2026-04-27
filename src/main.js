@@ -10,11 +10,11 @@ import {
 } from './state.js';
 import { audio } from './audio.js';
 import {
-  DRUM_GRID, drumVelocity, setDrumVelocity, drumBuffers,
+  DRUM_GRID, DRUM_SOUND_BANKS, drumVelocity, setDrumVelocity,
   activeBankKeys, activeBankLabels,
   activePads, setActivePad, activeDrumBank,
   loadDrumSamples, reloadDrumBank, drawDrumMachine, scheduleDrmDraw, loadWorldRhythm,
-  invalidateBankKeys,
+  invalidateBankKeys, syncDrumSoundBankManifest,
   setSyncSend as drumSetSyncSend, setSeqEngineRef as drumSetSeqEngineRef,
   WORLD_RHYTHMS_DRUM,
 } from './drum.js';
@@ -1872,14 +1872,12 @@ document.getElementById('solo-oct-up').addEventListener('click', () => { setSolo
 
 (function () {
   const bankSel = document.getElementById('drum-bank-sel');
-  Object.keys(WORLD_RHYTHMS_DRUM).length; // side-effect-free reference (DRUM_SOUND_BANKS from drum.js)
-  // populate bank selector using activeBankLabels/Keys indirection
-  import('./drum.js').then(({ DRUM_SOUND_BANKS }) => {
-    Object.keys(DRUM_SOUND_BANKS).forEach(key => {
-      const opt = document.createElement('option');
-      opt.value = key; opt.textContent = (DRUM_SOUND_BANKS[key].name || key);
-      bankSel.appendChild(opt);
-    });
+  syncDrumSoundBankManifest();
+  Object.keys(DRUM_SOUND_BANKS).forEach(key => {
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = (DRUM_SOUND_BANKS[key].name || key);
+    if (key === activeDrumBank) opt.selected = true;
+    bankSel.appendChild(opt);
   });
   bankSel.addEventListener('change', function () {
     reloadDrumBank(this.value, () => {
@@ -2346,8 +2344,6 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     panel.prepend(hdr); panel.prepend(handle);
     document.getElementById(wrapId).addEventListener('click', e => { if (e.target === document.getElementById(wrapId)) closePanelOverlay(wrapId); });
   });
-
-  loadDrumSamples(() => scheduleDrmDraw());
 
   const outer = document.getElementById('outer-wrap');
   const dots = document.querySelectorAll('.slide-dot');
