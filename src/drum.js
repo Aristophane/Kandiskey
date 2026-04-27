@@ -9,6 +9,9 @@ import { seqSteps, seqR, drumLoopLen, setDrumLoopLen } from './state.js';
 let seqEngine = { playing: false, drumDisplayStep: -1, displayStep: -1 };
 export function setSeqEngineRef(ref) { seqEngine = ref; }
 
+let _onGridMutate = null;
+export function setDrumGridMutateCallback(fn) { _onGridMutate = fn; }
+
 // syncSend reference — injected by main.js
 let _syncSend = () => {};
 export function setSyncSend(fn) { _syncSend = fn; }
@@ -582,6 +585,7 @@ drumCanvas.addEventListener('pointerdown', e => {
       delete DRUM_GRID[key];
       _syncSend({ type: 'DRUM_SET', key, val: false });
       scheduleDrmDraw();
+      if (_onGridMutate) _onGridMutate();
     }
   }, 600);
 });
@@ -625,6 +629,7 @@ drumCanvas.addEventListener('pointerup', e => {
   }
 
   scheduleDrmDraw();
+  if (_onGridMutate) _onGridMutate();
   if (_drmTapCount >= 4) { _drmTapKey = null; _drmTapCount = 0; return; }
   _drmTapTimer = setTimeout(() => { _drmTapKey = null; _drmTapCount = 0; }, 350);
 });

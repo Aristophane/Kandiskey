@@ -16,6 +16,7 @@ import {
   loadDrumSamples, reloadDrumBank, drawDrumMachine, scheduleDrmDraw, loadWorldRhythm,
   invalidateBankKeys, syncDrumSoundBankManifest,
   setSyncSend as drumSetSyncSend, setSeqEngineRef as drumSetSeqEngineRef,
+  setDrumGridMutateCallback,
   WORLD_RHYTHMS_DRUM,
 } from './drum.js';
 import {
@@ -23,6 +24,7 @@ import {
   setDrawCallback, setSyncSend as seqSetSyncSend,
   setSyncGetFullState, setSyncPlayUI, setStopMidiPlayer,
   setDrawFretboardCallback as seqSetDrawFretboard,
+  setSeqGridMutateCallback,
 } from './sequencer.js';
 import { SOLO_SYNTH, soloMode, soloOctave, setSoloMode, setSoloOctave, renderSoloPads, playTonnetzNote, playTonnetzChord } from './solo.js';
 import { captureState, saveToFile, loadFromFile, saveClip, getClips, deleteClip, autosaveToCache, autoloadFromCache } from './project.js';
@@ -736,8 +738,7 @@ function resize() {
 
 const ro = new ResizeObserver(() => resize());
 ro.observe(vizPanel);
-const roTonnetz = new ResizeObserver(() => drawTonnetz());
-roTonnetz.observe(document.getElementById('solo-wrap'));
+// (solo ResizeObserver removed — see solo-ui-archived.js)
 
 // ── HEADER BUTTONS ───────────────────────────────────────────────────
 
@@ -1802,73 +1803,148 @@ document.getElementById('btn-drums').addEventListener('click', function () {
   if (open) { loadDrumSamples(() => scheduleDrmDraw()); scheduleDrmDraw(); }
 });
 
-// ── SOLO PANEL ────────────────────────────────────────────────────────
+// ── CLIP LAUNCHER ─────────────────────────────────────────────────────
+// 4×8 grid: cols 0-1 = SEQ (16 slots), cols 2-3 = DRUM (16 slots).
+// Single tap: play slot (quantised to loop start). Tap again: stop.
+// Auto-filled on each project save.
 
-document.getElementById('btn-solo').addEventListener('click', function () {
-  if (isMobileSlides()) { scrollToSlide(3); return; }
-  const wrap = document.getElementById('solo-wrap');
-  const open = wrap.classList.toggle('open');
-  this.classList.toggle('active-solo', open);
-  if (open) setTimeout(drawTonnetz, 50);
-});
+const SLOTS_KEY   = 'kdk_clip_slots_v1';
+const SEQ_SLOTS   = 16;
+const DRUM_SLOTS  = 16;
+const ROWS        = 8;
 
-document.getElementById('btn-solo-synth').addEventListener('click', () => {
-  const open = document.getElementById('solo-synth-wrap').classList.toggle('open');
-  if (open) scheduleWaveCanvasAnimation();
-});
+let _seqSlots     = Array(SEQ_SLOTS).fill(null);
+let _drumSlots    = Array(DRUM_SLOTS).fill(null);
+let _activeSeqSlot  = -1;
+let _activeDrumSlot = -1;
+let _autoSeqRing  = -1;
+let _autoDrmRing  = -1;
 
-document.getElementById('solo-mode-chords').addEventListener('click', function () {
-  setSoloMode('chords');
-  this.classList.add('active');
-  document.getElementById('solo-mode-notes').classList.remove('active');
-  drawTonnetz();
-});
-document.getElementById('solo-mode-notes').addEventListener('click', function () {
-  setSoloMode('notes');
-  this.classList.add('active');
-  document.getElementById('solo-mode-chords').classList.remove('active');
-  drawTonnetz();
-});
-
-document.getElementById('solo-oct-down').addEventListener('click', () => { setSoloOctave(soloOctave - 1); drawTonnetz(); });
-document.getElementById('solo-oct-up').addEventListener('click', () => { setSoloOctave(soloOctave + 1); drawTonnetz(); });
-
-{
-  const fmtMs = v => v < 1000 ? Math.round(v) + 'ms' : (v / 1000).toFixed(2) + 's';
-  const fmtHz = v => v >= 1000 ? (v / 1000).toFixed(1) + 'kHz' : Math.round(v) + 'Hz';
-  const sl = (id, label, fmt, prop, scale) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input', function () {
-      const raw = parseFloat(this.value);
-      const val = scale ? raw / scale : raw;
-      SOLO_SYNTH[prop] = val;
-      const lbl = document.getElementById(label);
-      if (lbl) lbl.textContent = fmt(raw);
-    });
-  };
-  sl('solo-syn-attack', 'solo-syn-atk-val', v => fmtMs(v), 'attack', 1000);
-  sl('solo-syn-decay', 'solo-syn-dec-val', v => fmtMs(v), 'decay', 1000);
-  sl('solo-syn-filter', 'solo-syn-flt-val', v => fmtHz(v), 'filterFreq', 0);
-  sl('solo-syn-res', 'solo-syn-res-val', v => parseFloat(v).toFixed(1), 'filterQ', 0);
-  sl('solo-syn-vib-rate', 'solo-syn-vbr-val', v => parseFloat(v).toFixed(1) + 'Hz', 'vibratoRate', 0);
-  sl('solo-syn-vib-depth', 'solo-syn-vbd-val', v => Math.round(v) + '¢', 'vibratoDepth', 0);
-  sl('solo-syn-sustain', 'solo-syn-sus-val', v => Math.round(v) + '%', 'sustain', 100);
-  sl('solo-syn-detune', 'solo-syn-det-val', v => Math.round(v) + '¢', 'detune', 0);
-  sl('solo-syn-harmonics', 'solo-syn-harm-val', v => Math.round(v), 'numHarmonics', 0);
-
-  document.getElementById('solo-synth-wrap')?.addEventListener('transitionend', () => {
-    if (document.getElementById('solo-synth-wrap').classList.contains('open')) {
-      scheduleWaveCanvasAnimation();
-      document.querySelectorAll('#solo-synth-wrap .syn-vis-ctrl').forEach(cvs => {
-        const rect = cvs.getBoundingClientRect();
-        if (rect.width > 0) cvs.width = Math.round(rect.width);
-        const slider = cvs.nextElementSibling;
-        if (slider) slider.dispatchEvent(new Event('input'));
-      });
-    }
-  });
+function _persistSlots() {
+  try { localStorage.setItem(SLOTS_KEY, JSON.stringify({ seq: _seqSlots, drum: _drumSlots })); } catch { /* quota */ }
 }
+function _loadSlots() {
+  try {
+    const raw = localStorage.getItem(SLOTS_KEY);
+    if (!raw) return;
+    const { seq, drum } = JSON.parse(raw);
+    if (Array.isArray(seq))  _seqSlots  = seq.slice(0, SEQ_SLOTS).concat(Array(SEQ_SLOTS).fill(null)).slice(0, SEQ_SLOTS);
+    if (Array.isArray(drum)) _drumSlots = drum.slice(0, DRUM_SLOTS).concat(Array(DRUM_SLOTS).fill(null)).slice(0, DRUM_SLOTS);
+  } catch { /* corrupt */ }
+}
+
+function renderClipSlots() {
+  const grid = document.getElementById('clips-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  // 8 rows × 4 cols
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < 4; col++) {
+      const isSeq = col < 2;
+      const slotIdx = isSeq ? row * 2 + col : (row * 2 + (col - 2));
+      const slots = isSeq ? _seqSlots : _drumSlots;
+      const clip  = slots[slotIdx];
+      const active = isSeq ? _activeSeqSlot === slotIdx : _activeDrumSlot === slotIdx;
+
+      const btn = document.createElement('button');
+      btn.className = 'clip-cell' + (clip ? ' filled' : '') + (active ? ' active' : '');
+      btn.dataset.type = isSeq ? 'seq' : 'drum';
+      btn.dataset.idx  = slotIdx;
+
+      const num = document.createElement('span');
+      num.className = 'clip-num';
+      num.textContent = slotIdx + 1;
+      btn.appendChild(num);
+
+      if (clip) {
+        const lbl = document.createElement('span');
+        lbl.className = 'clip-label';
+        lbl.textContent = clip.label || '';
+        btn.appendChild(lbl);
+      }
+
+      btn.addEventListener('click', () => activateClipSlot(isSeq ? 'seq' : 'drum', slotIdx));
+      grid.appendChild(btn);
+    }
+  }
+}
+
+function activateClipSlot(type, idx) {
+  const isSeq = type === 'seq';
+  const clip  = (isSeq ? _seqSlots : _drumSlots)[idx];
+  if (!clip) return;
+
+  // Toggle off if already active
+  if ((isSeq ? _activeSeqSlot : _activeDrumSlot) === idx) {
+    if (isSeq) _activeSeqSlot = -1; else _activeDrumSlot = -1;
+    seqEngine._pendingClipApply = null;
+    renderClipSlots();
+    return;
+  }
+
+  const apply = () => {
+    if (isSeq) {
+      SEQ.grid = { ...clip.grid };
+      if (clip.loopLen !== undefined) SEQ.loopLen = clip.loopLen;
+      _activeSeqSlot = idx;
+      scheduleDrawSequencer();
+    } else {
+      for (const k of Object.keys(DRUM_GRID)) delete DRUM_GRID[k];
+      Object.assign(DRUM_GRID, clip.grid);
+      if (clip.loopLen !== undefined) setDrumLoopLen(clip.loopLen);
+      _activeDrumSlot = idx;
+      scheduleDrmDraw();
+    }
+    renderClipSlots();
+  };
+
+  if (!seqEngine.playing) {
+    apply();
+  } else {
+    const prev = seqEngine._pendingClipApply;
+    seqEngine._pendingClipApply = prev ? () => { prev(); apply(); } : apply;
+  }
+  renderClipSlots(); // show pending state immediately
+}
+
+// Called on each save — fills the next empty slot (ring if full)
+function autoFillClipSlots() {
+  const label = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let si = _seqSlots.findIndex(s => s === null);
+  if (si === -1) { _autoSeqRing = (_autoSeqRing + 1) % SEQ_SLOTS; si = _autoSeqRing; }
+  _seqSlots[si] = { grid: { ...SEQ.grid }, loopLen: SEQ.loopLen, label };
+
+  let di = _drumSlots.findIndex(s => s === null);
+  if (di === -1) { _autoDrmRing = (_autoDrmRing + 1) % DRUM_SLOTS; di = _autoDrmRing; }
+  _drumSlots[di] = { grid: { ...DRUM_GRID }, loopLen: drumLoopLen, label };
+
+  _persistSlots();
+  renderClipSlots();
+}
+
+document.getElementById('btn-clips').addEventListener('click', function () {
+  if (isMobileSlides()) { scrollToSlide(3); return; }
+  const wrap = document.getElementById('clips-wrap');
+  const open = wrap.classList.toggle('open');
+  this.classList.toggle('active-clips', open);
+});
+
+_loadSlots();
+renderClipSlots();
+
+setSeqGridMutateCallback(() => {
+  if (_activeSeqSlot >= 0 && _seqSlots[_activeSeqSlot]) {
+    _seqSlots[_activeSeqSlot] = { ..._seqSlots[_activeSeqSlot], grid: { ...SEQ.grid }, loopLen: SEQ.loopLen };
+    _persistSlots();
+  }
+});
+setDrumGridMutateCallback(() => {
+  if (_activeDrumSlot >= 0 && _drumSlots[_activeDrumSlot]) {
+    _drumSlots[_activeDrumSlot] = { ..._drumSlots[_activeDrumSlot], grid: { ...DRUM_GRID }, loopLen: drumLoopLen };
+    _persistSlots();
+  }
+});
 
 (function () {
   const bankSel = document.getElementById('drum-bank-sel');
@@ -2282,7 +2358,7 @@ const SLIDE_ELS = () => [
   document.querySelector('.main-layout'),
   document.getElementById('seq-wrap'),
   document.getElementById('drum-wrap'),
-  document.getElementById('solo-wrap'),
+  document.getElementById('clips-wrap'),
 ];
 
 function scrollToSlide(idx) {
@@ -2354,7 +2430,7 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
       dots.forEach((d, i) => d.classList.toggle('active', i === idx));
       document.getElementById('btn-seq').classList.toggle('active-seq', idx === 1);
       document.getElementById('btn-drums').classList.toggle('active-drums', idx === 2);
-      document.getElementById('btn-solo').classList.toggle('active-solo', idx === 3);
+      document.getElementById('btn-clips').classList.toggle('active-clips', idx === 3);
       document.body.classList.toggle('on-viz-slide', idx === 0);
       if (strip) strip.style.display = 'block';
       document.body.style.setProperty('--strip-h', '0px');
@@ -2963,6 +3039,7 @@ window.Project = {
       clickTimer = setTimeout(() => {
         clickTimer = null;
         autosaveToCache(captureState({ getMixerState, getDrumState, getWaveState: () => _waveIO.getState?.() }));
+        autoFillClipSlots();
         flashSaved();
       }, 300);
     }

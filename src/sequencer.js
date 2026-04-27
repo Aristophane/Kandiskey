@@ -35,6 +35,9 @@ export function setSyncPlayUI(fn)           { _syncPlayUI       = fn; }
 export function setStopMidiPlayer(fn)       { _stopMidiPlayer   = fn; }
 export function setDrawFretboardCallback(fn){ _drawFretboard    = fn; }
 
+let _onGridMutate = null;
+export function setSeqGridMutateCallback(fn) { _onGridMutate = fn; }
+
 // ── Canvas ──────────────────────────────────────────────────────────
 
 const seqCanvas = document.getElementById('seq-canvas');
@@ -250,6 +253,16 @@ export const seqEngine = {
     this.displayStep = globalStep % melLoop;
     this.drumDisplayStep = globalStep % drmLoop;
     this.step = globalStep % loopLen;
+
+    // Fire pending clip swap at every loop boundary (quantised to loop start)
+    const loopCount = Math.floor(globalStep / melLoop);
+    if (loopCount !== this._lastLoopCount) {
+      this._lastLoopCount = loopCount;
+      if (this._pendingClipApply) {
+        this._pendingClipApply();
+        this._pendingClipApply = null;
+      }
+    }
 
     if (this._corrTick > 0) {
       this._corrTick--;
@@ -651,6 +664,7 @@ seqCanvas.addEventListener('pointerdown', e => {
       delete SEQ.grid[key];
       _syncSend({ type: 'GRID_SET', key, val: false });
       scheduleDrawSequencer();
+      if (_onGridMutate) _onGridMutate();
     }
   }, 600);
 });
@@ -696,6 +710,7 @@ seqCanvas.addEventListener('pointerup', e => {
   }
 
   scheduleDrawSequencer();
+  if (_onGridMutate) _onGridMutate();
 
   if (_tapCount >= 4) { _tapKey = null; _tapCount = 0; return; }
 
