@@ -5,9 +5,8 @@
 // DOM sync lives in main.js (applyProjectSnapshot).
 // ═══════════════════════════════════════════════════════════════════
 
-import { S, SEQ, SYNTH, drumLoopLen } from './state.js';
+import { S, SEQ, SYNTH } from './state.js';
 import { SOLO_SYNTH, soloMode, soloOctave } from './solo.js';
-import { DRUM_GRID, activePads, activeDrumBank, drumVelocity } from './drum.js';
 
 const VERSION = 1;
 
