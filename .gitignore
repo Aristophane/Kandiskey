@@ -6,3 +6,5 @@ node_modules
 .env.local
 .env.*.local
 logs/
+shader_demo_moving.html
+shader_demo.html

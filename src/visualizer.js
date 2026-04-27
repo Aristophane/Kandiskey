@@ -103,12 +103,14 @@ function scaleNoteAngle(scaleIdx, noteIdx, tempKey) {
   return noteAngle(noteIdx, tempKey);
 }
 
+const _isTouch = () => window.matchMedia('(pointer: coarse)').matches;
+
 function rememberNoteHitZone(noteIdx, x, y, dotR, kind) {
   noteHitZones.push({
     noteIdx,
     x,
     y,
-    r: Math.max(dotR + 10, 14),
+    r: _isTouch() ? Math.max(dotR + 18, 26) : Math.max(dotR + 10, 14),
     kind,
   });
 }
@@ -166,6 +168,7 @@ function animStep() {
 // ── Filter arc visual ───────────────────────────────────────────────
 
 function drawFilterArc(cx, cy, R) {
+  if (_isTouch()) return;
   if (_filterNorm >= 0.995 && _filterDragPtrId === null) return;
   const sweepAngle = _filterNorm * Math.PI * 2;
   const innerR = R * 0.115;
@@ -593,6 +596,7 @@ export function playChordNow() {
 // ── Filter drag ─────────────────────────────────────────────────────
 
 canvas.addEventListener('pointerdown', e => {
+  if (_isTouch()) return; // filter drag disabled on touch — notes use click instead
   const { x, y } = canvasXY(e);
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const R = Math.min(canvas.width, canvas.height) * 0.355;
@@ -631,6 +635,9 @@ canvas.addEventListener('pointerup', e => {
 canvas.addEventListener('lostpointercapture', e => {
   if (e.pointerId === _filterDragPtrId) _filterDragPtrId = null;
 });
+
+// Prevent long-press context menu from suspending audio on mobile
+canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 // ── Canvas click ─────────────────────────────────────────────────────
 
