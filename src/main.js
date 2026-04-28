@@ -1398,8 +1398,6 @@ const _waveIO = {};
   const _trimCvs     = document.getElementById('sample-trim-cvs');
   const _trimCtx     = _trimCvs?.getContext('2d');
   const _autocutChk  = document.getElementById('sample-autocut');
-  const _threshSl    = document.getElementById('sample-autocut-thresh');
-  const _threshLbls  = document.querySelectorAll('.sample-thresh-lbl');
   const _startLbl    = document.getElementById('trim-start-lbl');
   const _endLbl      = document.getElementById('trim-end-lbl');
   const _durLbl      = document.getElementById('trim-dur-lbl');
@@ -1418,13 +1416,6 @@ const _waveIO = {};
     return String(m).padStart(2,'0') + ':' + String(Math.floor(s) % 60).padStart(2,'0');
   }
 
-  function _syncThreshVisibility() {
-    const on = _autocutChk?.checked;
-    _threshLbls.forEach(el => el.style.display = on ? '' : 'none');
-    if (_threshSl) _threshSl.style.display = on ? '' : 'none';
-  }
-  _autocutChk?.addEventListener('change', _syncThreshVisibility);
-  _syncThreshVisibility();
 
   function _sampleSetRaw(buf, name) {
     _recRawBuffer = buf;
@@ -1445,7 +1436,7 @@ const _waveIO = {};
   function _applyAutocut() {
     if (!_recRawBuffer) return;
     const ch = _recRawBuffer.getChannelData(0);
-    const thresh = (_threshSl ? parseInt(_threshSl.value) : 20) / 1000;
+    const thresh = 20 / 1000;
     let s = 0;
     for (let i = 0; i < ch.length; i++) {
       if (Math.abs(ch[i]) >= thresh) { s = i; break; }

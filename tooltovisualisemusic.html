@@ -1,904 +1,1137 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kandiskey</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kandiskey</title>
 </head>
+
 <body>
 
-<!-- ═══ INLINE SVG SPRITE (avoids Chrome/Brave external-use CORS block) ═══ -->
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
-  <defs>
-    <symbol id="icon-audio" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 13v-2a7 7 0 0 1 14 0v2"/>
-        <path d="M5 13v4a2 2 0 0 0 2 2h1v-8H7a2 2 0 0 0-2 2Z"/>
-        <path d="M19 13v4a2 2 0 0 1-2 2h-1v-8h1a2 2 0 0 1 2 2Z"/>
-      </g>
-    </symbol>
-    <symbol id="icon-mic-classic" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="8" y="3" width="8" height="12" rx="4"/>
-        <path d="M8 7h8"/>
-        <path d="M8 11h8"/>
-        <path d="M5 11a7 7 0 0 0 14 0"/>
-        <path d="M12 18v3"/>
-        <path d="M8 21h8"/>
-      </g>
-    </symbol>
-    <symbol id="icon-muted" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 10v4h4l5 4V6L8 10H4Z"/>
-        <path d="M17 9l4 6"/>
-        <path d="M21 9l-4 6"/>
-      </g>
-    </symbol>
-    <symbol id="icon-fretboard" viewBox="0 0 24 24">
-      <g fill="currentColor">
-        <circle cx="8.2" cy="1.6" r="1.1"/><circle cx="8.2" cy="3.8" r="1.1"/><circle cx="8.2" cy="6.0" r="1.1"/>
-        <circle cx="15.8" cy="1.6" r="1.1"/><circle cx="15.8" cy="3.8" r="1.1"/><circle cx="15.8" cy="6.0" r="1.1"/>
-        <rect x="9.5" y="0.8" width="5" height="6" rx="1.2"/>
-        <rect x="9" y="6.6" width="6" height="0.9"/>
-        <rect x="10" y="7.5" width="4" height="6.5" rx="0.5"/>
-        <path fill-rule="evenodd" d="M12 13.2a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"/>
-        <rect x="9.5" y="21.5" width="5" height="1.3" rx="0.4"/>
-      </g>
-    </symbol>
-    <symbol id="icon-synth" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 15c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/>
-        <path d="M4 6h16"/>
-        <path d="M4 10h10"/>
-      </g>
-    </symbol>
-    <symbol id="icon-sequencer" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="4" y="5" width="16" height="14" rx="2"/>
-        <path d="M9 5v14"/>
-        <path d="M15 5v14"/>
-        <path d="M4 10h16"/>
-        <path d="M4 15h16"/>
-      </g>
-    </symbol>
-    <symbol id="icon-drums" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <ellipse cx="12" cy="14" rx="7" ry="4"/>
-        <path d="M5 14v3c0 2.2 3.1 4 7 4s7-1.8 7-4v-3"/>
-        <path d="M9 8 5 4"/>
-        <path d="M15 8l4-4"/>
-      </g>
-    </symbol>
-    <symbol id="icon-mixer" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 4v16"/>
-        <path d="M12 4v16"/>
-        <path d="M18 4v16"/>
-        <circle cx="6" cy="9" r="2"/>
-        <circle cx="12" cy="15" r="2"/>
-        <circle cx="18" cy="11" r="2"/>
-      </g>
-    </symbol>
-    <symbol id="icon-tuner" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 4v6a2 2 0 0 1-4 0V4"/>
-        <path d="M16 4v6a2 2 0 0 0 4 0V4"/>
-        <path d="M8 4h8"/>
-        <path d="M12 10v10"/>
-        <path d="M10 20h4"/>
-      </g>
-    </symbol>
-    <symbol id="icon-play" viewBox="0 0 24 24">
-      <path fill="currentColor" d="M8 5.8v12.4c0 .7.8 1.1 1.4.7l9-6.2c.5-.3.5-1.1 0-1.4l-9-6.2c-.6-.4-1.4 0-1.4.7Z"/>
-    </symbol>
-    <symbol id="icon-stop" viewBox="0 0 24 24">
-      <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/>
-    </symbol>
-    <symbol id="icon-prev" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M15 6l-6 6 6 6"/>
-        <path d="M9 12h11"/>
-      </g>
-    </symbol>
-    <symbol id="icon-next" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 6l6 6-6 6"/>
-        <path d="M4 12h11"/>
-      </g>
-    </symbol>
-    <symbol id="icon-melody" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 5v10.5a3.5 3.5 0 1 1-1.8-3.1"/>
-        <path d="M14 5h5v4h-5"/>
-      </g>
-    </symbol>
-    <symbol id="icon-reverb" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 12h2"/>
-        <path d="M10 8c1.4 1 1.4 7 0 8"/>
-        <path d="M14 6c2.2 2.1 2.2 9.9 0 12"/>
-        <path d="M18 4c3 3.3 3 12.7 0 16"/>
-      </g>
-    </symbol>
-    <symbol id="icon-drive" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M13 3 5 14h6l-1 7 9-12h-6l1-6Z"/>
-      </g>
-    </symbol>
-    <symbol id="icon-delay" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="8"/>
-        <path d="M12 7v5l3 2"/>
-      </g>
-    </symbol>
-    <symbol id="icon-feedback" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M7 7h8a4 4 0 0 1 0 8H6"/>
-        <path d="M9 11 5 15l4 4"/>
-      </g>
-    </symbol>
-    <symbol id="icon-filter" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 6h14l-5 6v5l-4 2v-7L5 6Z"/>
-      </g>
-    </symbol>
-    <symbol id="icon-cutoff" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 16h4c3.5 0 4.5-8 8-8h4"/>
-        <path d="M16 5v14"/>
-      </g>
-    </symbol>
-    <symbol id="icon-resonance" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 16h5l3-9 3 9h5"/>
-        <path d="M12 7v-3"/>
-      </g>
-    </symbol>
-    <symbol id="icon-attack" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 18 17 6"/>
-        <path d="M17 6v7"/>
-        <path d="M17 6h-7"/>
-      </g>
-    </symbol>
-    <symbol id="icon-decay" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 6 17 18"/>
-        <path d="M17 18v-7"/>
-        <path d="M17 18h-7"/>
-      </g>
-    </symbol>
-    <symbol id="icon-vibrato-rate" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0"/>
-        <path d="M4 18h3"/>
-        <path d="M17 18h3"/>
-      </g>
-    </symbol>
-    <symbol id="icon-vibrato-depth" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 12h16"/>
-        <path d="M8 8 4 12l4 4"/>
-        <path d="M16 8l4 4-4 4"/>
-      </g>
-    </symbol>
-    <symbol id="icon-clips" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-      </g>
-    </symbol>
-    <symbol id="icon-mirror" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="3" x2="12" y2="21"/>
-        <polyline points="7 8 3 12 7 16"/>
-        <line x1="3" y1="12" x2="11" y2="12"/>
-        <polyline points="17 8 21 12 17 16"/>
-        <line x1="13" y1="12" x2="21" y2="12"/>
-      </g>
-    </symbol>
-    <symbol id="icon-save" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-        <polyline points="17 21 17 13 7 13 7 21"/>
-        <polyline points="7 3 7 8 15 8"/>
-      </g>
-    </symbol>
-    <symbol id="icon-import" viewBox="0 0 24 24">
-      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
-      </g>
-    </symbol>
-  </defs>
-</svg>
+  <!-- ═══ INLINE SVG SPRITE (avoids Chrome/Brave external-use CORS block) ═══ -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <defs>
+      <symbol id="icon-audio" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 13v-2a7 7 0 0 1 14 0v2" />
+          <path d="M5 13v4a2 2 0 0 0 2 2h1v-8H7a2 2 0 0 0-2 2Z" />
+          <path d="M19 13v4a2 2 0 0 1-2 2h-1v-8h1a2 2 0 0 1 2 2Z" />
+        </g>
+      </symbol>
+      <symbol id="icon-mic-classic" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="3" width="8" height="12" rx="4" />
+          <path d="M8 7h8" />
+          <path d="M8 11h8" />
+          <path d="M5 11a7 7 0 0 0 14 0" />
+          <path d="M12 18v3" />
+          <path d="M8 21h8" />
+        </g>
+      </symbol>
+      <symbol id="icon-muted" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 10v4h4l5 4V6L8 10H4Z" />
+          <path d="M17 9l4 6" />
+          <path d="M21 9l-4 6" />
+        </g>
+      </symbol>
+      <symbol id="icon-fretboard" viewBox="0 0 24 24">
+        <g fill="currentColor">
+          <circle cx="8.2" cy="1.6" r="1.1" />
+          <circle cx="8.2" cy="3.8" r="1.1" />
+          <circle cx="8.2" cy="6.0" r="1.1" />
+          <circle cx="15.8" cy="1.6" r="1.1" />
+          <circle cx="15.8" cy="3.8" r="1.1" />
+          <circle cx="15.8" cy="6.0" r="1.1" />
+          <rect x="9.5" y="0.8" width="5" height="6" rx="1.2" />
+          <rect x="9" y="6.6" width="6" height="0.9" />
+          <rect x="10" y="7.5" width="4" height="6.5" rx="0.5" />
+          <path fill-rule="evenodd"
+            d="M12 13.2a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z" />
+          <rect x="9.5" y="21.5" width="5" height="1.3" rx="0.4" />
+        </g>
+      </symbol>
+      <symbol id="icon-synth" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 15c2-5 4-5 6 0s4 5 6 0 4-5 6 0" />
+          <path d="M4 6h16" />
+          <path d="M4 10h10" />
+        </g>
+      </symbol>
+      <symbol id="icon-sequencer" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="5" width="16" height="14" rx="2" />
+          <path d="M9 5v14" />
+          <path d="M15 5v14" />
+          <path d="M4 10h16" />
+          <path d="M4 15h16" />
+        </g>
+      </symbol>
+      <symbol id="icon-drums" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="14" rx="7" ry="4" />
+          <path d="M5 14v3c0 2.2 3.1 4 7 4s7-1.8 7-4v-3" />
+          <path d="M9 8 5 4" />
+          <path d="M15 8l4-4" />
+        </g>
+      </symbol>
+      <symbol id="icon-mixer" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 4v16" />
+          <path d="M12 4v16" />
+          <path d="M18 4v16" />
+          <circle cx="6" cy="9" r="2" />
+          <circle cx="12" cy="15" r="2" />
+          <circle cx="18" cy="11" r="2" />
+        </g>
+      </symbol>
+      <symbol id="icon-tuner" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 4v6a2 2 0 0 1-4 0V4" />
+          <path d="M16 4v6a2 2 0 0 0 4 0V4" />
+          <path d="M8 4h8" />
+          <path d="M12 10v10" />
+          <path d="M10 20h4" />
+        </g>
+      </symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M8 5.8v12.4c0 .7.8 1.1 1.4.7l9-6.2c.5-.3.5-1.1 0-1.4l-9-6.2c-.6-.4-1.4 0-1.4.7Z" />
+      </symbol>
+      <symbol id="icon-stop" viewBox="0 0 24 24">
+        <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" />
+      </symbol>
+      <symbol id="icon-prev" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 6l-6 6 6 6" />
+          <path d="M9 12h11" />
+        </g>
+      </symbol>
+      <symbol id="icon-next" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 6l6 6-6 6" />
+          <path d="M4 12h11" />
+        </g>
+      </symbol>
+      <symbol id="icon-melody" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 5v10.5a3.5 3.5 0 1 1-1.8-3.1" />
+          <path d="M14 5h5v4h-5" />
+        </g>
+      </symbol>
+      <symbol id="icon-reverb" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h2" />
+          <path d="M10 8c1.4 1 1.4 7 0 8" />
+          <path d="M14 6c2.2 2.1 2.2 9.9 0 12" />
+          <path d="M18 4c3 3.3 3 12.7 0 16" />
+        </g>
+      </symbol>
+      <symbol id="icon-drive" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 3 5 14h6l-1 7 9-12h-6l1-6Z" />
+        </g>
+      </symbol>
+      <symbol id="icon-delay" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 7v5l3 2" />
+        </g>
+      </symbol>
+      <symbol id="icon-feedback" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 7h8a4 4 0 0 1 0 8H6" />
+          <path d="M9 11 5 15l4 4" />
+        </g>
+      </symbol>
+      <symbol id="icon-filter" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 6h14l-5 6v5l-4 2v-7L5 6Z" />
+        </g>
+      </symbol>
+      <symbol id="icon-cutoff" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 16h4c3.5 0 4.5-8 8-8h4" />
+          <path d="M16 5v14" />
+        </g>
+      </symbol>
+      <symbol id="icon-resonance" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 16h5l3-9 3 9h5" />
+          <path d="M12 7v-3" />
+        </g>
+      </symbol>
+      <symbol id="icon-attack" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 18 17 6" />
+          <path d="M17 6v7" />
+          <path d="M17 6h-7" />
+        </g>
+      </symbol>
+      <symbol id="icon-decay" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 6 17 18" />
+          <path d="M17 18v-7" />
+          <path d="M17 18h-7" />
+        </g>
+      </symbol>
+      <symbol id="icon-vibrato-rate" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0" />
+          <path d="M4 18h3" />
+          <path d="M17 18h3" />
+        </g>
+      </symbol>
+      <symbol id="icon-vibrato-depth" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12h16" />
+          <path d="M8 8 4 12l4 4" />
+          <path d="M16 8l4 4-4 4" />
+        </g>
+      </symbol>
+      <symbol id="icon-clips" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+        </g>
+      </symbol>
+      <symbol id="icon-mirror" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="3" x2="12" y2="21" />
+          <polyline points="7 8 3 12 7 16" />
+          <line x1="3" y1="12" x2="11" y2="12" />
+          <polyline points="17 8 21 12 17 16" />
+          <line x1="13" y1="12" x2="21" y2="12" />
+        </g>
+      </symbol>
+      <symbol id="icon-save" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </g>
+      </symbol>
+      <symbol id="icon-import" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </g>
+      </symbol>
+    </defs>
+  </svg>
 
-<!-- ═══ HEADER ═══ -->
-<header>
-  <div class="hdr-top">
-    <h1>Kandiskey</h1>
-    <!-- Transport -->
-    <div class="hdr-transport">
-      <button class="hdr-play-btn" id="btn-seq-play" title="Play (Space)"><svg class="hdr-icon" viewBox="0 0 20 20"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg><span class="btn-text"> Play</span></button>
-      <button class="hdr-pause-btn" id="btn-seq-pause" title="Pause (Space)" style="display:none"><svg class="hdr-icon" viewBox="0 0 20 20"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg><span class="btn-text"> Pause</span></button>
-      <button class="hdr-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg><span class="btn-text"> Stop</span></button>
+  <!-- ═══ HEADER ═══ -->
+  <header>
+    <div class="hdr-top">
+      <h1>Kandiskey</h1>
+      <!-- Transport -->
+      <div class="hdr-transport">
+        <button class="hdr-play-btn" id="btn-seq-play" title="Play (Space)"><svg class="hdr-icon" viewBox="0 0 20 20">
+            <polygon points="4,2 17,10 4,18" fill="currentColor" />
+          </svg><span class="btn-text"> Play</span></button>
+        <button class="hdr-pause-btn" id="btn-seq-pause" title="Pause (Space)" style="display:none"><svg
+            class="hdr-icon" viewBox="0 0 20 20">
+            <rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor" />
+            <rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor" />
+          </svg><span class="btn-text"> Pause</span></button>
+        <button class="hdr-stop-btn" id="btn-seq-stop" title="Stop" style="display:none"><svg class="hdr-icon"
+            viewBox="0 0 20 20">
+            <rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor" />
+          </svg><span class="btn-text"> Stop</span></button>
+      </div>
+      <div class="hdr-bpm">
+        <input type="range" id="seq-bpm" min="40" max="240" step="1" value="120" style="display:none">
+        <button class="bpm-display-btn" id="bpm-display-btn" title="Set tempo"><span id="seq-bpm-val">120</span><span
+            class="bpm-unit"> BPM</span></button>
+        <button class="tap-btn" id="btn-tap-tempo" title="Tap to set tempo">TAP</button>
+      </div>
+      <div class="hdr-actions">
+        <button class="hdr-btn active-audio" id="btn-audio" title="Toggle audio">
+          <svg class="hdr-icon">
+            <use href="#icon-audio"></use>
+          </svg><span class="btn-text"> Audio</span>
+        </button>
+        <button class="hdr-btn" id="btn-guitar" title="Show guitar fretboard">
+          <svg class="hdr-icon">
+            <use href="#icon-fretboard"></use>
+          </svg><span class="btn-text"> Fretboard</span>
+        </button>
+        <button class="hdr-btn" id="btn-seq" title="Step sequencer">
+          <svg class="hdr-icon">
+            <use href="#icon-sequencer"></use>
+          </svg><span class="btn-text"> Sequencer</span>
+        </button>
+        <button class="hdr-btn" id="btn-drums" title="Drum machine">
+          <svg class="hdr-icon">
+            <use href="#icon-drums"></use>
+          </svg><span class="btn-text"> Drums</span>
+        </button>
+        <button class="hdr-btn" id="btn-clips" title="Clip launcher">
+          <svg class="hdr-icon">
+            <use href="#icon-clips"></use>
+          </svg><span class="btn-text"> Clips</span>
+        </button>
+        <button class="hdr-btn" id="btn-mixer" title="Mixer &amp; FX">
+          <svg class="hdr-icon">
+            <use href="#icon-mixer"></use>
+          </svg><span class="btn-text"> Mixer</span>
+        </button>
+        <button class="hdr-btn" id="btn-tuner" title="Chromatic tuner">
+          <svg class="hdr-icon">
+            <use href="#icon-tuner"></use>
+          </svg><span class="btn-text"> Tuner</span>
+        </button>
+        <button class="hdr-btn" id="btn-save" title="Save (double-tap to download)">
+          <svg class="hdr-icon">
+            <use href="#icon-save"></use>
+          </svg><span class="btn-text"> Save</span>
+        </button>
+      </div>
     </div>
-    <div class="hdr-bpm">
-      <input type="range" id="seq-bpm" min="40" max="240" step="1" value="120" style="display:none">
-      <button class="bpm-display-btn" id="bpm-display-btn" title="Set tempo"><span id="seq-bpm-val">120</span><span class="bpm-unit"> BPM</span></button>
-      <button class="tap-btn" id="btn-tap-tempo" title="Tap to set tempo">TAP</button>
+    <!-- ── MIDI bar embedded in header ── -->
+    <div class="midi-bar" id="midi-bar-global">
+      <span class="seq-lbl" style="white-space:nowrap">MIDI</span>
+      <select id="midi-file-sel" class="sm" style="min-width:100px;max-width:220px"></select>
+      <button class="midi-btn" id="btn-midi-play" disabled><svg class="hdr-icon" style="width:0.9em;height:0.9em">
+          <use href="#icon-play"></use>
+        </svg> Play Bach</button>
+      <button class="midi-btn stop-btn" id="btn-midi-stop" style="display:none"><svg class="hdr-icon"
+          style="width:0.9em;height:0.9em">
+          <use href="#icon-stop"></use>
+        </svg> Stop</button>
+      <div class="midi-progress-wrap" style="flex:1;min-width:60px;max-width:120px">
+        <div class="midi-progress-bar" id="midi-prog"></div>
+      </div>
+      <span class="seq-lbl">Speed</span>
+      <input type="range" class="seq-sl" id="midi-speed" min="0.25" max="2" step="0.05" value="1" style="width:60px">
+      <span class="seq-val" id="midi-spd-lbl">×1.0</span>
     </div>
-    <div class="hdr-actions">
-      <button class="hdr-btn active-audio" id="btn-audio" title="Toggle audio">
-        <svg class="hdr-icon"><use href="#icon-audio"></use></svg><span class="btn-text"> Audio</span>
-      </button>
-      <button class="hdr-btn" id="btn-guitar" title="Show guitar fretboard">
-        <svg class="hdr-icon"><use href="#icon-fretboard"></use></svg><span class="btn-text"> Fretboard</span>
-      </button>
-      <button class="hdr-btn" id="btn-seq" title="Step sequencer">
-        <svg class="hdr-icon"><use href="#icon-sequencer"></use></svg><span class="btn-text"> Sequencer</span>
-      </button>
-      <button class="hdr-btn" id="btn-drums" title="Drum machine">
-        <svg class="hdr-icon"><use href="#icon-drums"></use></svg><span class="btn-text"> Drums</span>
-      </button>
-      <button class="hdr-btn" id="btn-clips" title="Clip launcher">
-        <svg class="hdr-icon"><use href="#icon-clips"></use></svg><span class="btn-text"> Clips</span>
-      </button>
-      <button class="hdr-btn" id="btn-mixer" title="Mixer &amp; FX">
-        <svg class="hdr-icon"><use href="#icon-mixer"></use></svg><span class="btn-text"> Mixer</span>
-      </button>
-      <button class="hdr-btn" id="btn-tuner" title="Chromatic tuner">
-        <svg class="hdr-icon"><use href="#icon-tuner"></use></svg><span class="btn-text"> Tuner</span>
-      </button>
-      <button class="hdr-btn" id="btn-save" title="Save (double-tap to download)">
-        <svg class="hdr-icon"><use href="#icon-save"></use></svg><span class="btn-text"> Save</span>
-      </button>
+  </header>
+
+  <!-- ── Slide navigation dots (mobile only) ── -->
+  <div id="slide-nav">
+    <button class="slide-dot active" data-slide="0" title="Circle"></button>
+    <button class="slide-dot" data-slide="1" title="Sequencer"></button>
+    <button class="slide-dot" data-slide="2" title="Drums"></button>
+    <button class="slide-dot" data-slide="3" title="Clips"></button>
+  </div>
+
+  <!-- ═══ OUTER WRAP: scale sidebar + main area ═══ -->
+  <div id="outer-wrap">
+
+    <!-- Scale sidebar (left on desktop/medium, first slide on phone) -->
+    <div class="panel" id="slide-scale">
+      <div class="section-title">Scale Settings</div>
+
+      <div class="control-group">
+        <span class="control-label">Root Note</span>
+        <div class="note-grid" id="root-grid"></div>
+        <div class="octave-ctrl">
+          <button class="oct-btn" id="btn-oct-down">−</button>
+          <span class="oct-lbl" id="oct-lbl">Oct 4</span>
+          <button class="oct-btn" id="btn-oct-up">+</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">Temperament</span>
+        <select id="sel-temperament"></select>
+        <div class="temp-desc" id="temp-desc"></div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">Scale Family</span>
+        <select id="sel-family"></select>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">Scale / Mode</span>
+        <select id="sel-scale"></select>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">Display</span>
+        <div class="toggle-row">
+          <button class="toggle-btn active" id="tog-cents">Δ Cents</button>
+          <button class="toggle-btn active" id="tog-labels">Labels</button>
+        </div>
+      </div>
+
+      <div class="legend" style="gap:2px">
+        <div class="legend-item">
+          <div class="ld" style="background:#f59e0b;box-shadow:0 0 4px rgba(245,158,11,0.5)"></div>Scale Root
+        </div>
+        <div class="legend-item">
+          <div class="ld" style="background:var(--accent);box-shadow:0 0 4px rgba(var(--accent-rgb),0.4)"></div>Scale
+          note
+        </div>
+        <div class="legend-item">
+          <div class="ll" style="background:rgba(var(--accent-rgb),0.5)"></div>Scale polygon
+        </div>
+        <div style="margin-top:4px; font-size:0.6rem; color:var(--text); opacity:0.6; text-transform:uppercase">Chord
+          Intervals</div>
+        <div class="legend-item">
+          <div class="ld" style="background:#ef4444;box-shadow:0 0 4px #ef4444"></div>Root
+        </div>
+        <div class="legend-item">
+          <div class="ld" style="background:#eab308;box-shadow:0 0 4px #eab308"></div>3rd
+        </div>
+        <div class="legend-item">
+          <div class="ld" style="background:#3b82f6;box-shadow:0 0 4px #3b82f6"></div>5th
+        </div>
+        <div class="legend-item">
+          <div class="ld" style="background:#10b981;box-shadow:0 0 4px #10b981"></div>7th / Extensions
+        </div>
+      </div>
+
+
     </div>
+
+    <!-- Main area: canvas + chord + panels -->
+    <div id="slides">
+
+      <!-- ═══ MAIN GRID: canvas | chord ═══ -->
+      <div class="main-layout">
+
+        <!-- Canvas -->
+        <div class="viz-panel" id="viz-panel">
+          <div class="viz-transport" aria-label="Transport controls">
+            <button class="mob-play-btn" id="mob-btn-play" title="Play">
+              <svg viewBox="0 0 20 20" width="18" height="18">
+                <polygon points="4,2 17,10 4,18" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none">
+              <svg viewBox="0 0 20 20" width="18" height="18">
+                <rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                <rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none">
+              <svg viewBox="0 0 20 20" width="18" height="18">
+                <rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="viz-quick-btn active-audio" id="btn-viz-mute" title="Mute audio" aria-label="Mute audio">
+              <svg class="hdr-icon">
+                <use href="#icon-audio"></use>
+              </svg>
+            </button>
+          </div>
+          <div class="viz-quick-actions" aria-label="Quick access controls">
+            <button class="viz-quick-btn" id="btn-viz-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
+              <svg class="hdr-icon">
+                <use href="#icon-mixer"></use>
+              </svg>
+            </button>
+          </div>
+          <div class="viz-bpm-action" aria-label="Tempo control">
+            <button class="viz-quick-btn viz-bpm-btn" id="btn-viz-bpm" title="Set tempo" aria-label="Set tempo">
+              <span class="viz-bpm-value" id="viz-bpm-val">120</span>
+              <span class="viz-bpm-label">BPM</span>
+            </button>
+          </div>
+          <canvas id="canvas"></canvas>
+        </div>
+
+        <!-- Chord controls -->
+        <div class="panel" id="slide-chord">
+          <div class="section-title">Chord</div>
+
+          <div class="control-group">
+            <span class="control-label">Chord Root</span>
+            <div class="note-grid" id="chord-grid"></div>
+          </div>
+
+          <div class="control-group">
+            <span class="control-label">Chord Type</span>
+            <div class="chord-grid" id="chord-type-grid"></div>
+          </div>
+
+          <div style="margin-top:6px; border-top:1px solid var(--border); padding-top:12px;">
+            <div class="section-title">Scale Notes</div>
+            <div class="chips" id="scale-chips"></div>
+            <table class="info-table">
+              <thead>
+                <tr>
+                  <th>Note</th>
+                  <th>Degree</th>
+                  <th>Cents</th>
+                  <th>Ratio</th>
+                </tr>
+              </thead>
+              <tbody id="info-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ SEQUENCER ═══ -->
+      <div id="seq-wrap">
+        <div class="seq-panel">
+          <div class="panel-subheader" id="seq-subheader">
+            <div class="panel-subheader-group">
+              <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-seq-panel-play" title="Play">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <polygon points="4,2 17,10 4,18" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-seq-panel-pause" title="Pause"
+                style="display:none">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                  <rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-seq-panel-stop" title="Stop"
+                style="display:none">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn active-audio" id="btn-seq-panel-mute" title="Mute audio"
+                aria-label="Mute audio">
+                <svg class="hdr-icon">
+                  <use href="#icon-audio"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="panel-subheader-group panel-subheader-right">
+              <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-seq-undo" title="Undo last note change"
+                aria-label="Undo" disabled>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7h11a5 5 0 0 1 0 10H7" />
+                  <polyline points="7 3 3 7 7 11" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn" id="btn-seq-mirror"
+                title="Mirror melody (reverse and merge)" aria-label="Mirror melody">
+                <svg class="hdr-icon">
+                  <use href="#icon-mirror"></use>
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-seq-params"
+                title="Sequencer settings" aria-label="Sequencer settings" aria-expanded="false">
+                <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn seq-src-btn seq-sample-subheader-btn" id="seq-src-sample"
+                data-source-mode="sample" title="Sample recorder" aria-label="Sample recorder" aria-expanded="false">
+                <svg class="hdr-icon">
+                  <use href="#icon-mic-classic"></use>
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-seq-panel-clear" title="Clear grid"
+                aria-label="Clear grid">✕</button>
+              <button class="viz-quick-btn panel-round-btn" id="btn-seq-panel-mixer" title="Mixer &amp; FX"
+                aria-label="Open mixer">
+                <svg class="hdr-icon">
+                  <use href="#icon-mixer"></use>
+                </svg>
+              </button>
+              <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-seq-panel-bpm" title="Set tempo"
+                aria-label="Set tempo">
+                <span class="viz-bpm-value" id="seq-panel-bpm-val">120</span>
+                <span class="viz-bpm-label">BPM</span>
+              </button>
+            </div>
+          </div>
+          <div class="seq-header seq-params-drawer" id="seq-params-drawer">
+            <span class="seq-lbl">Rhythm</span>
+            <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
+            <div class="seq-sep"></div>
+            <button class="midi-btn seq-src-btn active" id="seq-src-synth" data-source-mode="synth"
+              title="Sound synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em">
+                <use href="#icon-synth"></use>
+              </svg> Sound</button>
+            <button class="midi-btn seq-src-btn" id="seq-src-wave" data-source-mode="wave" title="Draw waveform"><svg
+                class="hdr-icon" style="width:0.9em;height:0.9em">
+                <use href="#icon-vibrato-rate"></use>
+              </svg> Wave</button>
+            <button class="midi-btn seq-src-btn seq-sample-desktop-btn" data-source-mode="sample"
+              title="Load sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em">
+                <use href="#icon-mic-classic"></use>
+              </svg> Sample</button>
+            <div class="seq-sep"></div>
+            <span class="seq-lbl">Length</span>
+            <input type="range" class="seq-sl" id="seq-note-len" min="0" max="100" step="1" value="25"
+              style="width:55px">
+            <span class="seq-val" id="seq-note-len-val">25</span>
+            <div class="seq-sep"></div>
+            <span class="seq-lbl">Groove</span>
+            <select id="seq-groove-template" class="groove-sel sm"></select>
+            <span class="seq-lbl" style="margin-left:4px">Accent</span>
+            <input type="range" class="seq-sl" id="seq-groove-accent" min="0" max="100" step="1" value="25"
+              style="width:48px">
+            <span class="seq-val" id="seq-groove-accent-val">25</span>
+            <!-- Hidden compat: synth panel toggle wired here, triggered by Sound button -->
+            <button id="btn-seq-synth" style="display:none" title="Sound controls"></button>
+          </div>
+          <!-- Wave controls strip (always a fixed-height bar when wave mode is active) -->
+          <div id="seq-wave-ctrl-bar" class="seq-extra-bar wave-ctrl-bar" style="display:none">
+            <div class="wave-btn-row">
+              <select id="wave-rand-type" class="wave-rand-sel">
+                <option value="harmonic">Harmonic</option>
+                <option value="smooth">Smooth</option>
+                <option value="fm">FM</option>
+                <option value="stepped">Stepped</option>
+                <option value="spiky">Spiky</option>
+              </select>
+              <button class="midi-btn wave-ctrl-btn" id="wave-draw-random">🎲 Random</button>
+              <span class="seq-sep wave-btn-sep"></span>
+              <button class="midi-btn wave-ctrl-btn" id="wave-draw-reset">↺ Reset</button>
+              <span class="seq-sep wave-btn-sep"></span>
+              <button class="midi-btn wave-ctrl-btn" id="wave-view-toggle" title="Toggle linear / radial view">○
+                Radial</button>
+            </div>
+            <div class="wave-rough-row">
+              <span class="seq-lbl">Rough</span>
+              <input type="range" class="seq-sl wave-rough-sl" id="wave-draw-roughness" min="0" max="100" step="1"
+                value="30">
+              <span class="seq-val" id="wave-draw-rough-val">30%</span>
+            </div>
+          </div>
+          <!-- Wave canvas area — expands to fill remaining canvas height -->
+          <div id="seq-wave-bar" class="seq-wave-canvas-area" style="display:none">
+            <canvas id="wave-draw-cvs" class="wave-draw-cvs"></canvas>
+          </div>
+          <!-- Sample bar -->
+          <div id="seq-sample-bar" class="seq-extra-bar" style="display:none">
+            <button class="midi-btn sample-rec-btn" id="sample-rec-btn" title="Record from microphone"
+              aria-label="Record from microphone">
+              <span class="sample-rec-icon" aria-hidden="true"></span>
+              <span class="sample-rec-text">Record</span>
+            </button>
+            <button class="midi-btn" id="sample-trim-btn" style="display:none" title="Edit sample trim points">✂
+              Trim</button>
+            <div class="seq-sep"></div>
+
+            <input type="file" id="sample-file-in" accept="audio/*" style="display:none">
+            <button class="midi-btn" id="sample-load-btn">⬆ Load</button>
+            <span id="sample-name-lbl" class="midi-title"
+              style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">No file loaded</span>
+
+            <span id="sample-rec-timer"
+              style="display:none;font-size:0.72rem;font-family:monospace;color:#f87171;white-space:nowrap">●
+              00:00</span>
+            <div class="seq-sep"></div>
+            <label class="seq-lbl sample-autocut-lbl" title="Auto-trim silence at edges">
+              <input type="checkbox" id="sample-autocut" checked style="margin-right:3px">Autocut
+            </label>
+<div class="seq-sep"></div>
+            <span class="seq-lbl">Root</span>
+            <select id="sample-root-note" class="sm" style="min-width:56px"></select>
+          </div>
+          <!-- Sample trim editor -->
+          <div id="seq-sample-trim-bar" class="seq-extra-bar sample-trim-bar" style="display:none">
+            <canvas id="sample-trim-cvs" height="72"></canvas>
+            <div class="sample-trim-footer">
+              <span class="seq-lbl">Start <span id="trim-start-lbl" class="seq-val">0.00s</span></span>
+              <span class="seq-sep"></span>
+              <span class="seq-lbl">End <span id="trim-end-lbl" class="seq-val">0.00s</span></span>
+              <span class="seq-lbl">Dur <span id="trim-dur-lbl" class="seq-val">0.00s</span></span>
+              <span style="flex:1"></span>
+              <button class="midi-btn" id="sample-trim-apply" title="Apply trim to sample">✓ Apply</button>
+            </div>
+          </div>
+          <div class="seq-canvas-wrap">
+            <canvas id="seq-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DRUM MACHINE ═══ -->
+      <div id="drum-wrap">
+        <div class="seq-panel">
+          <div class="panel-subheader" id="drum-subheader">
+            <div class="panel-subheader-group">
+              <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-drum-panel-play" title="Play">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <polygon points="4,2 17,10 4,18" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-drum-panel-pause" title="Pause"
+                style="display:none">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                  <rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-drum-panel-stop" title="Stop"
+                style="display:none">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn active-audio" id="btn-drum-panel-mute" title="Mute audio"
+                aria-label="Mute audio">
+                <svg class="hdr-icon">
+                  <use href="#icon-audio"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="panel-subheader-group panel-subheader-right">
+              <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-drum-undo"
+                title="Undo last drum change" aria-label="Undo" disabled>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7h11a5 5 0 0 1 0 10H7" />
+                  <polyline points="7 3 3 7 7 11" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-drum-params" title="Drum settings"
+                aria-label="Drum settings" aria-expanded="false">
+                <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-drum-panel-clear" title="Clear grid"
+                aria-label="Clear grid">✕</button>
+              <button class="viz-quick-btn panel-round-btn" id="btn-drum-panel-mixer" title="Mixer &amp; FX"
+                aria-label="Open mixer">
+                <svg class="hdr-icon">
+                  <use href="#icon-mixer"></use>
+                </svg>
+              </button>
+              <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-drum-panel-bpm" title="Set tempo"
+                aria-label="Set tempo">
+                <span class="viz-bpm-value" id="drum-panel-bpm-val">120</span>
+                <span class="viz-bpm-label">BPM</span>
+              </button>
+            </div>
+          </div>
+          <div class="seq-header seq-params-drawer" id="drum-params-drawer">
+            <span class="seq-lbl">Bank</span>
+            <select id="drum-bank-sel" class="sm" style="min-width:90px"></select>
+            <div class="seq-sep"></div>
+            <span class="seq-lbl">Pattern</span>
+            <select id="drum-preset-sel" class="sm" style="min-width:120px"></select>
+            <div class="seq-sep"></div>
+            <span class="seq-lbl">Vel</span>
+            <input type="range" class="seq-sl" id="drum-vel" min="10" max="100" step="5" value="80" style="width:55px">
+            <span class="seq-val" id="drum-vel-val">80%</span>
+            <div class="seq-sep"></div>
+            <span class="seq-lbl">Groove</span>
+            <select id="drum-groove-template" class="groove-sel sm"></select>
+            <span class="seq-lbl" style="margin-left:4px">Accent</span>
+            <input type="range" class="seq-sl" id="drum-groove-accent" min="0" max="100" step="1" value="25"
+              style="width:48px">
+            <span class="seq-val" id="drum-groove-accent-val">25</span>
+            <div class="seq-sep"></div>
+            <button class="midi-btn" id="btn-drum-pads" title="Configure pads">⚙ Pads</button>
+          </div>
+          <div id="drum-pad-config"
+            style="display:none;flex-wrap:wrap;gap:4px;padding:4px 8px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.06)">
+          </div>
+          <div class="seq-canvas-wrap">
+            <canvas id="drum-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CLIPS ═══ -->
+      <div id="clips-wrap">
+        <div class="seq-panel clips-panel">
+          <div class="panel-subheader" id="clips-subheader">
+            <div class="panel-subheader-group">
+              <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-clips-panel-play" title="Play">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <polygon points="4,2 17,10 4,18" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-clips-panel-pause" title="Pause"
+                style="display:none">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                  <rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-clips-panel-stop" title="Stop"
+                style="display:none">
+                <svg viewBox="0 0 20 20" width="18" height="18">
+                  <rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn active-audio" id="btn-clips-panel-mute" title="Mute audio"
+                aria-label="Mute audio">
+                <svg class="hdr-icon">
+                  <use href="#icon-audio"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="panel-subheader-group panel-subheader-right">
+              <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-clips-undo"
+                title="Undo last clip activation" aria-label="Undo" disabled>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7h11a5 5 0 0 1 0 10H7" />
+                  <polyline points="7 3 3 7 7 11" />
+                </svg>
+              </button>
+              <button class="viz-quick-btn panel-round-btn" id="btn-clips-panel-mixer" title="Mixer &amp; FX"
+                aria-label="Open mixer">
+                <svg class="hdr-icon">
+                  <use href="#icon-mixer"></use>
+                </svg>
+              </button>
+              <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-clips-panel-bpm" title="Set tempo"
+                aria-label="Set tempo">
+                <span class="viz-bpm-value" id="clips-panel-bpm-val">120</span>
+                <span class="viz-bpm-label">BPM</span>
+              </button>
+            </div>
+          </div>
+          <div class="seq-header">
+            <span class="seq-lbl clips-col-hdr seq-col-hdr">SEQ</span>
+            <span class="seq-lbl clips-col-hdr seq-col-hdr"></span>
+            <span class="seq-lbl clips-col-hdr drm-col-hdr">DRUM</span>
+            <span class="seq-lbl clips-col-hdr drm-col-hdr"></span>
+          </div>
+          <div class="clips-grid" id="clips-grid"></div>
+        </div>
+      </div>
+
+      <!-- ═══ MIXER ═══ -->
+      <div id="mixer-wrap">
+        <div class="synth-panel">
+          <!-- Volume faders (vertical, mixing-desk style) -->
+          <div class="mix-fader-row">
+            <div class="mix-channel">
+              <span class="syn-label" style="color:var(--accent4)"><svg class="hdr-icon">
+                  <use href="#icon-melody"></use>
+                </svg> Melody</span>
+              <canvas class="mix-fader-cvs" id="mix-fader-melody"></canvas>
+              <span class="syn-val" id="mix-mel-val">100%</span>
+              <input type="range" id="mix-melody" min="0" max="150" step="1" value="100" style="display:none">
+            </div>
+            <div class="mix-channel">
+              <span class="syn-label" style="color:var(--accent2)"><svg class="hdr-icon">
+                  <use href="#icon-drums"></use>
+                </svg> Drums</span>
+              <canvas class="mix-fader-cvs" id="mix-fader-drums"></canvas>
+              <span class="syn-val" id="mix-drm-val">100%</span>
+              <input type="range" id="mix-drums" min="0" max="150" step="1" value="100" style="display:none">
+            </div>
+            <div class="mix-channel mix-channel-master">
+              <span class="syn-label" style="color:var(--accent)"><svg class="hdr-icon">
+                  <use href="#icon-audio"></use>
+                </svg> Master</span>
+              <canvas class="mix-fader-cvs" id="mix-fader-master"></canvas>
+              <span class="syn-val" id="mix-master-val">55%</span>
+              <input type="range" id="mix-master" min="0" max="100" step="1" value="55" style="display:none">
+            </div>
+          </div>
+          <!-- Effects (canvas vis-ctrl injected by JS) -->
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-reverb"></use>
+              </svg> Reverb</span>
+            <span class="syn-val" id="mix-rev-val">50%</span>
+            <input type="range" class="syn-slider" id="mix-reverb" min="0" max="100" step="1" value="50">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-drive"></use>
+              </svg> Drive</span>
+            <span class="syn-val" id="mix-dist-val">0%</span>
+            <input type="range" class="syn-slider" id="mix-dist" min="0" max="100" step="1" value="0">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-delay"></use>
+              </svg> Delay</span>
+            <span class="syn-val" id="mix-dly-val">0%</span>
+            <input type="range" class="syn-slider" id="mix-delay-wet" min="0" max="80" step="1" value="0">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-vibrato-rate"></use>
+              </svg> Dly Time</span>
+            <span class="syn-val" id="mix-dlt-val">250ms</span>
+            <input type="range" class="syn-slider" id="mix-delay-time" min="30" max="800" step="10" value="250">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-feedback"></use>
+              </svg> Dly FB</span>
+            <span class="syn-val" id="mix-dfb-val">30%</span>
+            <input type="range" class="syn-slider" id="mix-delay-fb" min="0" max="90" step="1" value="30">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon">
+                <use href="#icon-filter"></use>
+              </svg> Filter</span>
+            <div style="display:flex;gap:3px;margin-top:4px">
+              <button class="preset-btn active" id="gflt-lp" data-type="lowpass">LP</button>
+              <button class="preset-btn" id="gflt-bp" data-type="bandpass">BP</button>
+              <button class="preset-btn" id="gflt-hp" data-type="highpass">HP</button>
+            </div>
+          </div>
+          <div class="syn-group">
+            <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon">
+                <use href="#icon-cutoff"></use>
+              </svg> Cutoff</span>
+            <span class="syn-val" id="mix-gflt-val" style="color:#fb923c">Open</span>
+            <input type="range" class="syn-slider" id="mix-gflt-cut" min="0" max="100" step="0.5" value="100">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon">
+                <use href="#icon-resonance"></use>
+              </svg> Reso</span>
+            <span class="syn-val" id="mix-gflt-res-val" style="color:#fb923c">0.7</span>
+            <input type="range" class="syn-slider" id="mix-gflt-res" min="0.1" max="20" step="0.1" value="0.7">
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SYNTH CONTROLS ═══ -->
+      <div id="synth-wrap">
+        <div class="synth-panel">
+          <div class="syn-group" style="min-width:116px">
+            <span class="syn-label">Wave</span>
+            <div class="wave-grid">
+              <canvas class="wave-cvs active" id="wave-sine" data-wave="sine" width="52" height="22"></canvas>
+              <canvas class="wave-cvs" id="wave-triangle" data-wave="triangle" width="52" height="22"></canvas>
+              <canvas class="wave-cvs" id="wave-square" data-wave="square" width="52" height="22"></canvas>
+              <canvas class="wave-cvs" id="wave-sawtooth" data-wave="sawtooth" width="52" height="22"></canvas>
+            </div>
+          </div>
+          <div class="syn-group" style="min-width:100px">
+            <span class="syn-label">Preset</span>
+            <div class="preset-row">
+              <button class="preset-btn active" id="preset-piano">Piano</button>
+              <button class="preset-btn" id="preset-cello">Cello</button>
+            </div>
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-attack"></use>
+              </svg> Attack</span>
+            <span class="syn-val" id="syn-atk-val">8ms</span>
+            <input type="range" class="syn-slider" id="syn-attack" min="1" max="500" step="1" value="8">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-decay"></use>
+              </svg> Decay</span>
+            <span class="syn-val" id="syn-dec-val">0.30s</span>
+            <input type="range" class="syn-slider" id="syn-decay" min="50" max="5000" step="10" value="300">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-cutoff"></use>
+              </svg> Filter</span>
+            <span class="syn-val" id="syn-flt-val">4.0kHz</span>
+            <input type="range" class="syn-slider" id="syn-filter" min="200" max="12000" step="50" value="4000">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-resonance"></use>
+              </svg> Reso</span>
+            <span class="syn-val" id="syn-res-val">1.0</span>
+            <input type="range" class="syn-slider" id="syn-res" min="0.1" max="14" step="0.1" value="1">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-vibrato-rate"></use>
+              </svg> Vib Rate</span>
+            <span class="syn-val" id="syn-vbr-val">5.5Hz</span>
+            <input type="range" class="syn-slider" id="syn-vib-rate" min="0.5" max="12" step="0.1" value="5.5">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-vibrato-depth"></use>
+              </svg> Vib Depth</span>
+            <span class="syn-val" id="syn-vbd-val">0¢</span>
+            <input type="range" class="syn-slider" id="syn-vib-depth" min="0" max="60" step="1" value="0">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon" style="width:0.9em;height:0.9em">
+                <use href="#icon-stop"></use>
+              </svg> Sustain</span>
+            <span class="syn-val" id="syn-sus-val">62%</span>
+            <input type="range" class="syn-slider" id="syn-sustain" min="0" max="100" step="1" value="62">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon" style="width:0.9em;height:0.9em">
+                <use href="#icon-drive"></use>
+              </svg> Detune</span>
+            <span class="syn-val" id="syn-det-val">0¢</span>
+            <input type="range" class="syn-slider" id="syn-detune" min="-100" max="100" step="1" value="0">
+          </div>
+          <div class="syn-group">
+            <span class="syn-label"><svg class="hdr-icon">
+                <use href="#icon-vibrato-rate"></use>
+              </svg> Harmonics</span>
+            <span class="syn-val" id="syn-harm-val">6</span>
+            <input type="range" class="syn-slider" id="syn-harmonics" min="1" max="8" step="1" value="6">
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FRETBOARD ═══ -->
+      <div id="fretboard-wrap">
+        <div class="fb-panel">
+          <div class="fb-header">
+            <span class="section-title"
+              style="margin:0;border:none;padding:0;display:flex;align-items:center;gap:4px;"><svg class="hdr-icon">
+                <use href="#icon-fretboard"></use>
+              </svg> Guitar Fretboard</span>
+            <span class="control-label" style="margin:0;margin-left:14px">Mode</span>
+            <select class="sm" id="sel-fb-mode">
+              <option value="both">Scale & Chords</option>
+              <option value="scale">Scale Only</option>
+              <option value="chord">Chords Only</option>
+            </select>
+            <span class="control-label" style="margin:0;margin-left:8px">Tuning</span>
+            <select class="sm" id="sel-tuning"></select>
+
+            <div class="fb-pos-controls" id="fb-pos-controls"
+              style="display:flex; align-items:center; margin-left:14px; gap:6px">
+              <span class="control-label" style="margin:0; white-space:nowrap">Position</span>
+              <button class="mob-root-btn" id="btn-fb-pos-prev"><svg class="hdr-icon" style="width:0.8em;height:0.8em">
+                  <use href="#icon-prev"></use>
+                </svg></button>
+              <span id="fb-pos-lbl"
+                style="font-size:0.78rem; color:var(--accent); width:52px; text-align:center; font-weight:700; letter-spacing:0.02em">All</span>
+              <button class="mob-root-btn" id="btn-fb-pos-next"><svg class="hdr-icon" style="width:0.8em;height:0.8em">
+                  <use href="#icon-next"></use>
+                </svg></button>
+            </div>
+
+            <span style="font-size:0.62rem;color:rgba(255,255,255,0.28);margin-left:auto">Click fret to play note</span>
+          </div>
+          <div class="fb-canvas-wrap">
+            <canvas id="fb-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- #slides -->
+  </div><!-- #outer-wrap -->
+
+  <!-- ── Mobile compact scale strip (canvas + seq slides; hidden on drums) ── -->
+  <div id="mobile-scale-strip">
+    <button class="mob-root-btn" id="mob-root-prev" title="Previous root"><svg class="hdr-icon"
+        style="width:0.8em;height:0.8em">
+        <use href="#icon-prev"></use>
+      </svg></button>
+    <span class="mob-root-lbl" id="mob-root-lbl">C</span>
+    <button class="mob-root-btn" id="mob-root-next" title="Next root"><svg class="hdr-icon"
+        style="width:0.8em;height:0.8em">
+        <use href="#icon-next"></use>
+      </svg></button>
+    <select id="mob-temp-sel" class="mob-sel"></select>
+    <select id="mob-family-sel" class="mob-sel"></select>
+    <select id="mob-scale-sel" class="mob-sel" style="flex:1"></select>
   </div>
-  <!-- ── MIDI bar embedded in header ── -->
-  <div class="midi-bar" id="midi-bar-global">
-    <span class="seq-lbl" style="white-space:nowrap">MIDI</span>
-    <select id="midi-file-sel" class="sm" style="min-width:100px;max-width:220px"></select>
-    <button class="midi-btn" id="btn-midi-play" disabled><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-play"></use></svg> Play Bach</button>
-    <button class="midi-btn stop-btn" id="btn-midi-stop" style="display:none"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-stop"></use></svg> Stop</button>
-    <div class="midi-progress-wrap" style="flex:1;min-width:60px;max-width:120px"><div class="midi-progress-bar" id="midi-prog"></div></div>
-    <span class="seq-lbl">Speed</span>
-    <input type="range" class="seq-sl" id="midi-speed" min="0.25" max="2" step="0.05" value="1" style="width:60px">
-    <span class="seq-val" id="midi-spd-lbl">×1.0</span>
-  </div>
-</header>
 
-<!-- ── Slide navigation dots (mobile only) ── -->
-<div id="slide-nav">
-  <button class="slide-dot active" data-slide="0" title="Circle"></button>
-  <button class="slide-dot" data-slide="1" title="Sequencer"></button>
-  <button class="slide-dot" data-slide="2" title="Drums"></button>
-  <button class="slide-dot" data-slide="3" title="Clips"></button>
-</div>
-
-<!-- ═══ OUTER WRAP: scale sidebar + main area ═══ -->
-<div id="outer-wrap">
-
-<!-- Scale sidebar (left on desktop/medium, first slide on phone) -->
-<div class="panel" id="slide-scale">
-  <div class="section-title">Scale Settings</div>
-
-  <div class="control-group">
-    <span class="control-label">Root Note</span>
-    <div class="note-grid" id="root-grid"></div>
-    <div class="octave-ctrl">
-      <button class="oct-btn" id="btn-oct-down">−</button>
-      <span class="oct-lbl" id="oct-lbl">Oct 4</span>
-      <button class="oct-btn" id="btn-oct-up">+</button>
-    </div>
-  </div>
-
-  <div class="control-group">
-    <span class="control-label">Temperament</span>
-    <select id="sel-temperament"></select>
-    <div class="temp-desc" id="temp-desc"></div>
-  </div>
-
-  <div class="control-group">
-    <span class="control-label">Scale Family</span>
-    <select id="sel-family"></select>
-  </div>
-
-  <div class="control-group">
-    <span class="control-label">Scale / Mode</span>
-    <select id="sel-scale"></select>
-  </div>
-
-  <div class="control-group">
-    <span class="control-label">Display</span>
-    <div class="toggle-row">
-      <button class="toggle-btn active" id="tog-cents">Δ Cents</button>
-      <button class="toggle-btn active" id="tog-labels">Labels</button>
-    </div>
-  </div>
-
-  <div class="legend" style="gap:2px">
-    <div class="legend-item"><div class="ld" style="background:#f59e0b;box-shadow:0 0 4px rgba(245,158,11,0.5)"></div>Scale Root</div>
-    <div class="legend-item"><div class="ld" style="background:var(--accent);box-shadow:0 0 4px rgba(var(--accent-rgb),0.4)"></div>Scale note</div>
-    <div class="legend-item"><div class="ll" style="background:rgba(var(--accent-rgb),0.5)"></div>Scale polygon</div>
-    <div style="margin-top:4px; font-size:0.6rem; color:var(--text); opacity:0.6; text-transform:uppercase">Chord Intervals</div>
-    <div class="legend-item"><div class="ld" style="background:#ef4444;box-shadow:0 0 4px #ef4444"></div>Root</div>
-    <div class="legend-item"><div class="ld" style="background:#eab308;box-shadow:0 0 4px #eab308"></div>3rd</div>
-    <div class="legend-item"><div class="ld" style="background:#3b82f6;box-shadow:0 0 4px #3b82f6"></div>5th</div>
-    <div class="legend-item"><div class="ld" style="background:#10b981;box-shadow:0 0 4px #10b981"></div>7th / Extensions</div>
-  </div>
-
-
-</div>
-
-<!-- Main area: canvas + chord + panels -->
-<div id="slides">
-
-<!-- ═══ MAIN GRID: canvas | chord ═══ -->
-<div class="main-layout">
-
-  <!-- Canvas -->
-  <div class="viz-panel" id="viz-panel">
-    <div class="viz-transport" aria-label="Transport controls">
-      <button class="mob-play-btn" id="mob-btn-play" title="Play">
-        <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
+  <!-- ═══ MOBILE FOOTER (transport + mute + mixer + bpm; hidden on viz slide) ═══ -->
+  <div id="mob-footer">
+    <div class="mob-footer-inner">
+      <button class="viz-quick-btn panel-round-btn mob-play-btn mob-footer-btn" id="btn-mob-footer-play" title="Play">
+        <svg viewBox="0 0 20 20" width="18" height="18">
+          <polygon points="4,2 17,10 4,18" fill="currentColor" />
+        </svg>
       </button>
-      <button class="mob-pause-btn" id="mob-btn-pause" title="Pause" style="display:none">
-        <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
+      <button class="viz-quick-btn panel-round-btn mob-pause-btn mob-footer-btn" id="btn-mob-footer-pause" title="Pause"
+        style="display:none">
+        <svg viewBox="0 0 20 20" width="18" height="18">
+          <rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor" />
+          <rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor" />
+        </svg>
       </button>
-      <button class="mob-stop-btn" id="mob-btn-stop" title="Stop" style="display:none">
-        <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
+      <button class="viz-quick-btn panel-round-btn mob-stop-btn mob-footer-btn" id="btn-mob-footer-stop" title="Stop"
+        style="display:none">
+        <svg viewBox="0 0 20 20" width="18" height="18">
+          <rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor" />
+        </svg>
       </button>
-      <button class="viz-quick-btn active-audio" id="btn-viz-mute" title="Mute audio" aria-label="Mute audio">
-        <svg class="hdr-icon"><use href="#icon-audio"></use></svg>
+      <button class="viz-quick-btn panel-round-btn active-audio mob-footer-btn" id="btn-mob-footer-mute"
+        title="Mute audio" aria-label="Mute audio">
+        <svg class="hdr-icon">
+          <use href="#icon-audio"></use>
+        </svg>
       </button>
-    </div>
-    <div class="viz-quick-actions" aria-label="Quick access controls">
-      <button class="viz-quick-btn" id="btn-viz-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
-        <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
+      <button class="viz-quick-btn panel-round-btn mob-footer-btn" id="btn-mob-footer-mixer" title="Mixer &amp; FX"
+        aria-label="Open mixer"
+        style="background:rgba(96,165,250,0.14);border-color:rgba(96,165,250,0.42);color:#93c5fd">
+        <svg class="hdr-icon">
+          <use href="#icon-mixer"></use>
+        </svg>
       </button>
-    </div>
-    <div class="viz-bpm-action" aria-label="Tempo control">
-      <button class="viz-quick-btn viz-bpm-btn" id="btn-viz-bpm" title="Set tempo" aria-label="Set tempo">
-        <span class="viz-bpm-value" id="viz-bpm-val">120</span>
+      <button class="viz-quick-btn viz-bpm-btn panel-round-btn mob-footer-btn" id="btn-mob-footer-bpm" title="Set tempo"
+        aria-label="Set tempo" style="background:rgba(239,68,68,0.14);border-color:rgba(239,68,68,0.42);color:#fca5a5">
+        <span class="viz-bpm-value" id="mob-footer-bpm-val">120</span>
         <span class="viz-bpm-label">BPM</span>
       </button>
     </div>
-    <canvas id="canvas"></canvas>
   </div>
 
-  <!-- Chord controls -->
-  <div class="panel" id="slide-chord">
-    <div class="section-title">Chord</div>
-
-    <div class="control-group">
-      <span class="control-label">Chord Root</span>
-      <div class="note-grid" id="chord-grid"></div>
-    </div>
-
-    <div class="control-group">
-      <span class="control-label">Chord Type</span>
-      <div class="chord-grid" id="chord-type-grid"></div>
-    </div>
-
-    <div style="margin-top:6px; border-top:1px solid var(--border); padding-top:12px;">
-      <div class="section-title">Scale Notes</div>
-      <div class="chips" id="scale-chips"></div>
-      <table class="info-table">
-        <thead><tr><th>Note</th><th>Degree</th><th>Cents</th><th>Ratio</th></tr></thead>
-        <tbody id="info-body"></tbody>
-      </table>
+  <!-- BPM Cylinder Picker -->
+  <div id="bpm-picker-overlay" style="display:none">
+    <div class="bpm-backdrop"></div>
+    <div class="bpm-picker-pop">
+      <div class="bpm-picker-fade top"></div>
+      <div class="bpm-picker-scroll" id="bpm-picker-scroll"></div>
+      <div class="bpm-picker-fade bot"></div>
+      <div class="bpm-picker-indicator"></div>
     </div>
   </div>
 
-</div>
-
-<!-- ═══ SEQUENCER ═══ -->
-<div id="seq-wrap">
-  <div class="seq-panel">
-    <div class="panel-subheader" id="seq-subheader">
-      <div class="panel-subheader-group">
-        <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-seq-panel-play" title="Play">
-          <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-seq-panel-pause" title="Pause" style="display:none">
-          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-seq-panel-stop" title="Stop" style="display:none">
-          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn active-audio" id="btn-seq-panel-mute" title="Mute audio" aria-label="Mute audio">
-          <svg class="hdr-icon"><use href="#icon-audio"></use></svg>
-        </button>
-      </div>
-      <div class="panel-subheader-group panel-subheader-right">
-        <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-seq-undo" title="Undo last note change" aria-label="Undo" disabled>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7h11a5 5 0 0 1 0 10H7"/>
-            <polyline points="7 3 3 7 7 11"/>
-          </svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn" id="btn-seq-mirror" title="Mirror melody (reverse and merge)" aria-label="Mirror melody">
-          <svg class="hdr-icon"><use href="#icon-mirror"></use></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-seq-params" title="Sequencer settings" aria-label="Sequencer settings" aria-expanded="false">
-          <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6"/>
-          </svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn seq-src-btn seq-sample-subheader-btn" id="seq-src-sample" data-source-mode="sample" title="Sample recorder" aria-label="Sample recorder" aria-expanded="false">
-          <svg class="hdr-icon"><use href="#icon-mic-classic"></use></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-seq-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
-        <button class="viz-quick-btn panel-round-btn" id="btn-seq-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
-          <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
-        </button>
-        <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-seq-panel-bpm" title="Set tempo" aria-label="Set tempo">
-          <span class="viz-bpm-value" id="seq-panel-bpm-val">120</span>
-          <span class="viz-bpm-label">BPM</span>
-        </button>
-      </div>
-    </div>
-    <div class="seq-header seq-params-drawer" id="seq-params-drawer">
-      <span class="seq-lbl">Rhythm</span>
-      <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
-      <div class="seq-sep"></div>
-      <button class="midi-btn seq-src-btn active" id="seq-src-synth" data-source-mode="synth" title="Sound synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-wave" data-source-mode="wave" title="Draw waveform"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-vibrato-rate"></use></svg> Wave</button>
-      <button class="midi-btn seq-src-btn seq-sample-desktop-btn" data-source-mode="sample" title="Load sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-mic-classic"></use></svg> Sample</button>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Length</span>
-      <input type="range" class="seq-sl" id="seq-note-len" min="0" max="100" step="1" value="25" style="width:55px">
-      <span class="seq-val" id="seq-note-len-val">25</span>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Groove</span>
-      <select id="seq-groove-template" class="groove-sel sm"></select>
-      <span class="seq-lbl" style="margin-left:4px">Accent</span>
-      <input type="range" class="seq-sl" id="seq-groove-accent" min="0" max="100" step="1" value="25" style="width:48px">
-      <span class="seq-val" id="seq-groove-accent-val">25</span>
-      <!-- Hidden compat: synth panel toggle wired here, triggered by Sound button -->
-      <button id="btn-seq-synth" style="display:none" title="Sound controls"></button>
-    </div>
-    <!-- Wave controls strip (always a fixed-height bar when wave mode is active) -->
-    <div id="seq-wave-ctrl-bar" class="seq-extra-bar wave-ctrl-bar" style="display:none">
-      <div class="wave-btn-row">
-        <select id="wave-rand-type" class="wave-rand-sel">
-          <option value="harmonic">Harmonic</option>
-          <option value="smooth">Smooth</option>
-          <option value="fm">FM</option>
-          <option value="stepped">Stepped</option>
-          <option value="spiky">Spiky</option>
-        </select>
-        <button class="midi-btn wave-ctrl-btn" id="wave-draw-random">🎲 Random</button>
-        <span class="seq-sep wave-btn-sep"></span>
-        <button class="midi-btn wave-ctrl-btn" id="wave-draw-reset">↺ Reset</button>
-        <span class="seq-sep wave-btn-sep"></span>
-        <button class="midi-btn wave-ctrl-btn" id="wave-view-toggle" title="Toggle linear / radial view">○ Radial</button>
-      </div>
-      <div class="wave-rough-row">
-        <span class="seq-lbl">Rough</span>
-        <input type="range" class="seq-sl wave-rough-sl" id="wave-draw-roughness" min="0" max="100" step="1" value="30">
-        <span class="seq-val" id="wave-draw-rough-val">30%</span>
-      </div>
-    </div>
-    <!-- Wave canvas area — expands to fill remaining canvas height -->
-    <div id="seq-wave-bar" class="seq-wave-canvas-area" style="display:none">
-      <canvas id="wave-draw-cvs" class="wave-draw-cvs"></canvas>
-    </div>
-    <!-- Sample bar -->
-    <div id="seq-sample-bar" class="seq-extra-bar" style="display:none">
-            <button class="midi-btn sample-rec-btn" id="sample-rec-btn" title="Record from microphone" aria-label="Record from microphone">
-        <span class="sample-rec-icon" aria-hidden="true"></span>
-        <span class="sample-rec-text">Record</span>
-      </button>
-      <button class="midi-btn" id="sample-trim-btn" style="display:none" title="Edit sample trim points">✂ Trim</button>
-      <input type="file" id="sample-file-in" accept="audio/*" style="display:none">
-      <button class="midi-btn" id="sample-load-btn">⬆ Load</button>
-
-      <span id="sample-rec-timer" style="display:none;font-size:0.72rem;font-family:monospace;color:#f87171;white-space:nowrap">● 00:00</span>
-      <div class="seq-sep"></div>
-      <span id="sample-name-lbl" class="midi-title" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">No file loaded</span>
-      <div class="seq-sep"></div>
-      <label class="seq-lbl sample-autocut-lbl" title="Auto-trim silence at edges">
-        <input type="checkbox" id="sample-autocut" checked style="margin-right:3px">Autocut
-      </label>
-      <span class="seq-lbl sample-thresh-lbl">Thresh</span>
-      <input type="range" id="sample-autocut-thresh" class="seq-sl sample-thresh-sl" min="1" max="100" step="1" value="20" style="width:46px" title="Autocut silence threshold">
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Root</span>
-      <select id="sample-root-note" class="sm" style="min-width:56px"></select>
-    </div>
-    <!-- Sample trim editor -->
-    <div id="seq-sample-trim-bar" class="seq-extra-bar sample-trim-bar" style="display:none">
-      <canvas id="sample-trim-cvs" height="72"></canvas>
-      <div class="sample-trim-footer">
-        <span class="seq-lbl">Start <span id="trim-start-lbl" class="seq-val">0.00s</span></span>
-        <span class="seq-sep"></span>
-        <span class="seq-lbl">End <span id="trim-end-lbl" class="seq-val">0.00s</span></span>
-        <span class="seq-lbl">Dur <span id="trim-dur-lbl" class="seq-val">0.00s</span></span>
-        <span style="flex:1"></span>
-        <button class="midi-btn" id="sample-trim-apply" title="Apply trim to sample">✓ Apply</button>
-      </div>
-    </div>
-    <div class="seq-canvas-wrap">
-      <canvas id="seq-canvas"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ DRUM MACHINE ═══ -->
-<div id="drum-wrap">
-  <div class="seq-panel">
-    <div class="panel-subheader" id="drum-subheader">
-      <div class="panel-subheader-group">
-        <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-drum-panel-play" title="Play">
-          <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-drum-panel-pause" title="Pause" style="display:none">
-          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-drum-panel-stop" title="Stop" style="display:none">
-          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn active-audio" id="btn-drum-panel-mute" title="Mute audio" aria-label="Mute audio">
-          <svg class="hdr-icon"><use href="#icon-audio"></use></svg>
-        </button>
-      </div>
-      <div class="panel-subheader-group panel-subheader-right">
-        <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-drum-undo" title="Undo last drum change" aria-label="Undo" disabled>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7h11a5 5 0 0 1 0 10H7"/>
-            <polyline points="7 3 3 7 7 11"/>
-          </svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-drum-params" title="Drum settings" aria-label="Drum settings" aria-expanded="false">
-          <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6"/>
-          </svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-drum-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
-        <button class="viz-quick-btn panel-round-btn" id="btn-drum-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
-          <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
-        </button>
-        <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-drum-panel-bpm" title="Set tempo" aria-label="Set tempo">
-          <span class="viz-bpm-value" id="drum-panel-bpm-val">120</span>
-          <span class="viz-bpm-label">BPM</span>
-        </button>
-      </div>
-    </div>
-    <div class="seq-header seq-params-drawer" id="drum-params-drawer">
-      <span class="seq-lbl">Bank</span>
-      <select id="drum-bank-sel" class="sm" style="min-width:90px"></select>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Pattern</span>
-      <select id="drum-preset-sel" class="sm" style="min-width:120px"></select>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Vel</span>
-      <input type="range" class="seq-sl" id="drum-vel" min="10" max="100" step="5" value="80" style="width:55px">
-      <span class="seq-val" id="drum-vel-val">80%</span>
-      <div class="seq-sep"></div>
-      <span class="seq-lbl">Groove</span>
-      <select id="drum-groove-template" class="groove-sel sm"></select>
-      <span class="seq-lbl" style="margin-left:4px">Accent</span>
-      <input type="range" class="seq-sl" id="drum-groove-accent" min="0" max="100" step="1" value="25" style="width:48px">
-      <span class="seq-val" id="drum-groove-accent-val">25</span>
-      <div class="seq-sep"></div>
-      <button class="midi-btn" id="btn-drum-pads" title="Configure pads">⚙ Pads</button>
-    </div>
-    <div id="drum-pad-config" style="display:none;flex-wrap:wrap;gap:4px;padding:4px 8px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.06)"></div>
-    <div class="seq-canvas-wrap">
-      <canvas id="drum-canvas"></canvas>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ CLIPS ═══ -->
-<div id="clips-wrap">
-  <div class="seq-panel clips-panel">
-    <div class="panel-subheader" id="clips-subheader">
-      <div class="panel-subheader-group">
-        <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-clips-panel-play" title="Play">
-          <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-clips-panel-pause" title="Pause" style="display:none">
-          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-clips-panel-stop" title="Stop" style="display:none">
-          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn active-audio" id="btn-clips-panel-mute" title="Mute audio" aria-label="Mute audio">
-          <svg class="hdr-icon"><use href="#icon-audio"></use></svg>
-        </button>
-      </div>
-      <div class="panel-subheader-group panel-subheader-right">
-        <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-clips-undo" title="Undo last clip activation" aria-label="Undo" disabled>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7h11a5 5 0 0 1 0 10H7"/>
-            <polyline points="7 3 3 7 7 11"/>
-          </svg>
-        </button>
-        <button class="viz-quick-btn panel-round-btn" id="btn-clips-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
-          <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
-        </button>
-        <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-clips-panel-bpm" title="Set tempo" aria-label="Set tempo">
-          <span class="viz-bpm-value" id="clips-panel-bpm-val">120</span>
-          <span class="viz-bpm-label">BPM</span>
-        </button>
-      </div>
-    </div>
-    <div class="seq-header">
-      <span class="seq-lbl clips-col-hdr seq-col-hdr">SEQ</span>
-      <span class="seq-lbl clips-col-hdr seq-col-hdr"></span>
-      <span class="seq-lbl clips-col-hdr drm-col-hdr">DRUM</span>
-      <span class="seq-lbl clips-col-hdr drm-col-hdr"></span>
-    </div>
-    <div class="clips-grid" id="clips-grid"></div>
-  </div>
-</div>
-
-<!-- ═══ MIXER ═══ -->
-<div id="mixer-wrap">
-  <div class="synth-panel">
-    <!-- Volume faders (vertical, mixing-desk style) -->
-    <div class="mix-fader-row">
-      <div class="mix-channel">
-        <span class="syn-label" style="color:var(--accent4)"><svg class="hdr-icon"><use href="#icon-melody"></use></svg> Melody</span>
-        <canvas class="mix-fader-cvs" id="mix-fader-melody"></canvas>
-        <span class="syn-val" id="mix-mel-val">100%</span>
-        <input type="range" id="mix-melody" min="0" max="150" step="1" value="100" style="display:none">
-      </div>
-      <div class="mix-channel">
-        <span class="syn-label" style="color:var(--accent2)"><svg class="hdr-icon"><use href="#icon-drums"></use></svg> Drums</span>
-        <canvas class="mix-fader-cvs" id="mix-fader-drums"></canvas>
-        <span class="syn-val" id="mix-drm-val">100%</span>
-        <input type="range" id="mix-drums" min="0" max="150" step="1" value="100" style="display:none">
-      </div>
-      <div class="mix-channel mix-channel-master">
-        <span class="syn-label" style="color:var(--accent)"><svg class="hdr-icon"><use href="#icon-audio"></use></svg> Master</span>
-        <canvas class="mix-fader-cvs" id="mix-fader-master"></canvas>
-        <span class="syn-val" id="mix-master-val">55%</span>
-        <input type="range" id="mix-master" min="0" max="100" step="1" value="55" style="display:none">
-      </div>
-    </div>
-    <!-- Effects (canvas vis-ctrl injected by JS) -->
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-reverb"></use></svg> Reverb</span>
-      <span class="syn-val" id="mix-rev-val">50%</span>
-      <input type="range" class="syn-slider" id="mix-reverb" min="0" max="100" step="1" value="50">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-drive"></use></svg> Drive</span>
-      <span class="syn-val" id="mix-dist-val">0%</span>
-      <input type="range" class="syn-slider" id="mix-dist" min="0" max="100" step="1" value="0">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-delay"></use></svg> Delay</span>
-      <span class="syn-val" id="mix-dly-val">0%</span>
-      <input type="range" class="syn-slider" id="mix-delay-wet" min="0" max="80" step="1" value="0">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-vibrato-rate"></use></svg> Dly Time</span>
-      <span class="syn-val" id="mix-dlt-val">250ms</span>
-      <input type="range" class="syn-slider" id="mix-delay-time" min="30" max="800" step="10" value="250">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-feedback"></use></svg> Dly FB</span>
-      <span class="syn-val" id="mix-dfb-val">30%</span>
-      <input type="range" class="syn-slider" id="mix-delay-fb" min="0" max="90" step="1" value="30">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon"><use href="#icon-filter"></use></svg> Filter</span>
-      <div style="display:flex;gap:3px;margin-top:4px">
-        <button class="preset-btn active" id="gflt-lp" data-type="lowpass">LP</button>
-        <button class="preset-btn" id="gflt-bp" data-type="bandpass">BP</button>
-        <button class="preset-btn" id="gflt-hp" data-type="highpass">HP</button>
-      </div>
-    </div>
-    <div class="syn-group">
-      <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon"><use href="#icon-cutoff"></use></svg> Cutoff</span>
-      <span class="syn-val" id="mix-gflt-val" style="color:#fb923c">Open</span>
-      <input type="range" class="syn-slider" id="mix-gflt-cut" min="0" max="100" step="0.5" value="100">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label" style="color:rgba(251,146,60,0.85)"><svg class="hdr-icon"><use href="#icon-resonance"></use></svg> Reso</span>
-      <span class="syn-val" id="mix-gflt-res-val" style="color:#fb923c">0.7</span>
-      <input type="range" class="syn-slider" id="mix-gflt-res" min="0.1" max="20" step="0.1" value="0.7">
-    </div>
-  </div>
-</div>
-
-<!-- ═══ SYNTH CONTROLS ═══ -->
-<div id="synth-wrap">
-  <div class="synth-panel">
-    <div class="syn-group" style="min-width:116px">
-      <span class="syn-label">Wave</span>
-      <div class="wave-grid">
-        <canvas class="wave-cvs active" id="wave-sine"     data-wave="sine"     width="52" height="22"></canvas>
-        <canvas class="wave-cvs"        id="wave-triangle" data-wave="triangle" width="52" height="22"></canvas>
-        <canvas class="wave-cvs"        id="wave-square"   data-wave="square"   width="52" height="22"></canvas>
-        <canvas class="wave-cvs"        id="wave-sawtooth" data-wave="sawtooth" width="52" height="22"></canvas>
-      </div>
-    </div>
-    <div class="syn-group" style="min-width:100px">
-      <span class="syn-label">Preset</span>
-      <div class="preset-row">
-        <button class="preset-btn active" id="preset-piano">Piano</button>
-        <button class="preset-btn" id="preset-cello">Cello</button>
-      </div>
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-attack"></use></svg> Attack</span>
-      <span class="syn-val" id="syn-atk-val">8ms</span>
-      <input type="range" class="syn-slider" id="syn-attack" min="1" max="500" step="1" value="8">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-decay"></use></svg> Decay</span>
-      <span class="syn-val" id="syn-dec-val">0.30s</span>
-      <input type="range" class="syn-slider" id="syn-decay" min="50" max="5000" step="10" value="300">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-cutoff"></use></svg> Filter</span>
-      <span class="syn-val" id="syn-flt-val">4.0kHz</span>
-      <input type="range" class="syn-slider" id="syn-filter" min="200" max="12000" step="50" value="4000">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-resonance"></use></svg> Reso</span>
-      <span class="syn-val" id="syn-res-val">1.0</span>
-      <input type="range" class="syn-slider" id="syn-res" min="0.1" max="14" step="0.1" value="1">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-vibrato-rate"></use></svg> Vib Rate</span>
-      <span class="syn-val" id="syn-vbr-val">5.5Hz</span>
-      <input type="range" class="syn-slider" id="syn-vib-rate" min="0.5" max="12" step="0.1" value="5.5">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-vibrato-depth"></use></svg> Vib Depth</span>
-      <span class="syn-val" id="syn-vbd-val">0¢</span>
-      <input type="range" class="syn-slider" id="syn-vib-depth" min="0" max="60" step="1" value="0">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-stop"></use></svg> Sustain</span>
-      <span class="syn-val" id="syn-sus-val">62%</span>
-      <input type="range" class="syn-slider" id="syn-sustain" min="0" max="100" step="1" value="62">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-drive"></use></svg> Detune</span>
-      <span class="syn-val" id="syn-det-val">0¢</span>
-      <input type="range" class="syn-slider" id="syn-detune" min="-100" max="100" step="1" value="0">
-    </div>
-    <div class="syn-group">
-      <span class="syn-label"><svg class="hdr-icon"><use href="#icon-vibrato-rate"></use></svg> Harmonics</span>
-      <span class="syn-val" id="syn-harm-val">6</span>
-      <input type="range" class="syn-slider" id="syn-harmonics" min="1" max="8" step="1" value="6">
-    </div>
-  </div>
-</div>
-
-<!-- ═══ FRETBOARD ═══ -->
-<div id="fretboard-wrap">
-  <div class="fb-panel">
-    <div class="fb-header">
-      <span class="section-title" style="margin:0;border:none;padding:0;display:flex;align-items:center;gap:4px;"><svg class="hdr-icon"><use href="#icon-fretboard"></use></svg> Guitar Fretboard</span>
-      <span class="control-label" style="margin:0;margin-left:14px">Mode</span>
-      <select class="sm" id="sel-fb-mode">
-        <option value="both">Scale & Chords</option>
-        <option value="scale">Scale Only</option>
-        <option value="chord">Chords Only</option>
-      </select>
-      <span class="control-label" style="margin:0;margin-left:8px">Tuning</span>
-      <select class="sm" id="sel-tuning"></select>
-
-      <div class="fb-pos-controls" id="fb-pos-controls" style="display:flex; align-items:center; margin-left:14px; gap:6px">
-        <span class="control-label" style="margin:0; white-space:nowrap">Position</span>
-        <button class="mob-root-btn" id="btn-fb-pos-prev"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="#icon-prev"></use></svg></button>
-        <span id="fb-pos-lbl" style="font-size:0.78rem; color:var(--accent); width:52px; text-align:center; font-weight:700; letter-spacing:0.02em">All</span>
-        <button class="mob-root-btn" id="btn-fb-pos-next"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="#icon-next"></use></svg></button>
-      </div>
-
-      <span style="font-size:0.62rem;color:rgba(255,255,255,0.28);margin-left:auto">Click fret to play note</span>
-    </div>
-    <div class="fb-canvas-wrap">
-      <canvas id="fb-canvas"></canvas>
-    </div>
-  </div>
-</div>
-
-</div><!-- #slides -->
-</div><!-- #outer-wrap -->
-
-<!-- ── Mobile compact scale strip (canvas + seq slides; hidden on drums) ── -->
-<div id="mobile-scale-strip">
-  <button class="mob-root-btn" id="mob-root-prev" title="Previous root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="#icon-prev"></use></svg></button>
-  <span class="mob-root-lbl" id="mob-root-lbl">C</span>
-  <button class="mob-root-btn" id="mob-root-next" title="Next root"><svg class="hdr-icon" style="width:0.8em;height:0.8em"><use href="#icon-next"></use></svg></button>
-  <select id="mob-temp-sel" class="mob-sel"></select>
-  <select id="mob-family-sel" class="mob-sel"></select>
-  <select id="mob-scale-sel" class="mob-sel" style="flex:1"></select>
-</div>
-
-<!-- ═══ MOBILE FOOTER (transport + mute + mixer + bpm; hidden on viz slide) ═══ -->
-<div id="mob-footer">
-  <div class="mob-footer-inner">
-    <button class="viz-quick-btn panel-round-btn mob-play-btn mob-footer-btn" id="btn-mob-footer-play" title="Play">
-      <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
-    </button>
-    <button class="viz-quick-btn panel-round-btn mob-pause-btn mob-footer-btn" id="btn-mob-footer-pause" title="Pause" style="display:none">
-      <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
-    </button>
-    <button class="viz-quick-btn panel-round-btn mob-stop-btn mob-footer-btn" id="btn-mob-footer-stop" title="Stop" style="display:none">
-      <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
-    </button>
-    <button class="viz-quick-btn panel-round-btn active-audio mob-footer-btn" id="btn-mob-footer-mute" title="Mute audio" aria-label="Mute audio">
-      <svg class="hdr-icon"><use href="#icon-audio"></use></svg>
-    </button>
-    <button class="viz-quick-btn panel-round-btn mob-footer-btn" id="btn-mob-footer-mixer" title="Mixer &amp; FX" aria-label="Open mixer" style="background:rgba(96,165,250,0.14);border-color:rgba(96,165,250,0.42);color:#93c5fd">
-      <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
-    </button>
-    <button class="viz-quick-btn viz-bpm-btn panel-round-btn mob-footer-btn" id="btn-mob-footer-bpm" title="Set tempo" aria-label="Set tempo" style="background:rgba(239,68,68,0.14);border-color:rgba(239,68,68,0.42);color:#fca5a5">
-      <span class="viz-bpm-value" id="mob-footer-bpm-val">120</span>
-      <span class="viz-bpm-label">BPM</span>
-    </button>
-  </div>
-</div>
-
-<!-- BPM Cylinder Picker -->
-<div id="bpm-picker-overlay" style="display:none">
-  <div class="bpm-backdrop"></div>
-  <div class="bpm-picker-pop">
-    <div class="bpm-picker-fade top"></div>
-    <div class="bpm-picker-scroll" id="bpm-picker-scroll"></div>
-    <div class="bpm-picker-fade bot"></div>
-    <div class="bpm-picker-indicator"></div>
-  </div>
-</div>
-
-<!-- Responsive Scale Picker -->
-<div id="scale-picker-overlay" style="display:none" aria-hidden="true">
-  <div class="scale-picker-backdrop"></div>
-  <div class="scale-picker-pop" role="dialog" aria-modal="true" aria-labelledby="scale-picker-title">
-    <div class="scale-picker-topbar">
-      <div>
-        <div class="scale-picker-kicker">Circle Center</div>
-        <h2 id="scale-picker-title">Scale Settings</h2>
-      </div>
-      <button class="scale-picker-close" id="scale-picker-close" aria-label="Close scale settings">X</button>
-    </div>
-    <p class="scale-picker-copy">Slide the wheels to change temperament, family, and mode.</p>
-    <div class="scale-picker-columns">
-      <section class="scale-wheel scale-wheel-temp">
-        <div class="scale-wheel-label">Temperament</div>
-        <div class="scale-wheel-frame">
-          <div class="scale-wheel-fade top"></div>
-          <div class="scale-wheel-scroll" id="scale-picker-temp"></div>
-          <div class="scale-wheel-fade bot"></div>
-          <div class="scale-wheel-indicator"></div>
+  <!-- Responsive Scale Picker -->
+  <div id="scale-picker-overlay" style="display:none" aria-hidden="true">
+    <div class="scale-picker-backdrop"></div>
+    <div class="scale-picker-pop" role="dialog" aria-modal="true" aria-labelledby="scale-picker-title">
+      <div class="scale-picker-topbar">
+        <div>
+          <div class="scale-picker-kicker">Circle Center</div>
+          <h2 id="scale-picker-title">Scale Settings</h2>
         </div>
-      </section>
-      <section class="scale-wheel scale-wheel-family">
-        <div class="scale-wheel-label">Family</div>
-        <div class="scale-wheel-frame">
-          <div class="scale-wheel-fade top"></div>
-          <div class="scale-wheel-scroll" id="scale-picker-family"></div>
-          <div class="scale-wheel-fade bot"></div>
-          <div class="scale-wheel-indicator"></div>
-        </div>
-      </section>
-      <section class="scale-wheel scale-wheel-mode">
-        <div class="scale-wheel-label">Mode</div>
-        <div class="scale-wheel-frame">
-          <div class="scale-wheel-fade top"></div>
-          <div class="scale-wheel-scroll" id="scale-picker-scale"></div>
-          <div class="scale-wheel-fade bot"></div>
-          <div class="scale-wheel-indicator"></div>
-        </div>
-      </section>
+        <button class="scale-picker-close" id="scale-picker-close" aria-label="Close scale settings">X</button>
+      </div>
+      <p class="scale-picker-copy">Slide the wheels to change temperament, family, and mode.</p>
+      <div class="scale-picker-columns">
+        <section class="scale-wheel scale-wheel-temp">
+          <div class="scale-wheel-label">Temperament</div>
+          <div class="scale-wheel-frame">
+            <div class="scale-wheel-fade top"></div>
+            <div class="scale-wheel-scroll" id="scale-picker-temp"></div>
+            <div class="scale-wheel-fade bot"></div>
+            <div class="scale-wheel-indicator"></div>
+          </div>
+        </section>
+        <section class="scale-wheel scale-wheel-family">
+          <div class="scale-wheel-label">Family</div>
+          <div class="scale-wheel-frame">
+            <div class="scale-wheel-fade top"></div>
+            <div class="scale-wheel-scroll" id="scale-picker-family"></div>
+            <div class="scale-wheel-fade bot"></div>
+            <div class="scale-wheel-indicator"></div>
+          </div>
+        </section>
+        <section class="scale-wheel scale-wheel-mode">
+          <div class="scale-wheel-label">Mode</div>
+          <div class="scale-wheel-frame">
+            <div class="scale-wheel-fade top"></div>
+            <div class="scale-wheel-scroll" id="scale-picker-scale"></div>
+            <div class="scale-wheel-fade bot"></div>
+            <div class="scale-wheel-indicator"></div>
+          </div>
+        </section>
+      </div>
+      <div class="scale-picker-summary" id="scale-picker-summary"></div>
     </div>
-    <div class="scale-picker-summary" id="scale-picker-summary"></div>
   </div>
-</div>
 
-<script>window.DRUM_SOUND_BANK_BASE_URL = '%BASE_URL%drumSoundBankChunks/';</script>
-<script src="%BASE_URL%drumSoundBankChunks/drumSoundBanks.base64.index.js"></script>
-<script type="module" src="/src/main.js"></script>
+  <script>window.DRUM_SOUND_BANK_BASE_URL = '%BASE_URL%drumSoundBankChunks/';</script>
+  <script src="%BASE_URL%drumSoundBankChunks/drumSoundBanks.base64.index.js"></script>
+  <script type="module" src="/src/main.js"></script>
 </body>
+
 </html>
