@@ -39,6 +39,9 @@ export function setDrawFretboardCallback(fn){ _drawFretboard    = fn; }
 let _onGridMutate = null;
 export function setSeqGridMutateCallback(fn) { _onGridMutate = fn; }
 
+let _onPreMutate = null;
+export function setSeqPreMutateCallback(fn) { _onPreMutate = fn; }
+
 // ── Canvas ──────────────────────────────────────────────────────────
 
 const seqCanvas = document.getElementById('seq-canvas');
@@ -655,6 +658,7 @@ seqCanvas.addEventListener('pointerdown', e => {
   const rect = seqCanvas.getBoundingClientRect();
   const py = e.clientY - rect.top;
   if (py < 16) {
+    if (_onPreMutate) _onPreMutate();
     _seqLoopDragActive = true;
     _seqLoopDragPtrId = e.pointerId;
     seqCanvas.setPointerCapture(e.pointerId);
@@ -670,6 +674,7 @@ seqCanvas.addEventListener('pointerdown', e => {
     _lpTimer = null;
     clearTimeout(_tapTimer); _tapKey = null; _tapCount = 0;
     if (SEQ.grid[key]) {
+      if (_onPreMutate) _onPreMutate();
       delete SEQ.grid[key];
       _syncSend({ type: 'GRID_SET', key, val: false });
       scheduleDrawSequencer();
@@ -706,6 +711,7 @@ seqCanvas.addEventListener('pointerup', e => {
 
   if (_tapKey === key) {
     // Additional tap — upgrade cycle, anchoring phase to the current loop
+    if (_onPreMutate) _onPreMutate();
     _tapCount = Math.min(_tapCount + 1, 4);
     const lc  = seqCurrentLoopCount();
     const val = { n: _tapCount, o: lc % _tapCount };
@@ -713,6 +719,7 @@ seqCanvas.addEventListener('pointerup', e => {
     _syncSend({ type: 'GRID_SET', key, val });
   } else {
     // First tap on this cell — toggle immediately (cycle 1 plays every loop)
+    if (_onPreMutate) _onPreMutate();
     _tapKey = key; _tapCount = 1;
     if (SEQ.grid[key]) { delete SEQ.grid[key]; _syncSend({ type: 'GRID_SET', key, val: false }); }
     else               { SEQ.grid[key] = 1;    _syncSend({ type: 'GRID_SET', key, val: 1    }); }

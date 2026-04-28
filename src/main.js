@@ -24,7 +24,7 @@ import {
   setDrawCallback, setSyncSend as seqSetSyncSend,
   setSyncGetFullState, setSyncPlayUI, setStopMidiPlayer,
   setDrawFretboardCallback as seqSetDrawFretboard,
-  setSeqGridMutateCallback,
+  setSeqGridMutateCallback, setSeqPreMutateCallback,
 } from './sequencer.js';
 import { SOLO_SYNTH, soloMode, soloOctave, setSoloMode, setSoloOctave, renderSoloPads, playTonnetzNote, playTonnetzChord } from './solo.js';
 import { captureState, saveToFile, loadFromFile, saveClip, getClips, deleteClip, autosaveToCache, autoloadFromCache } from './project.js';
@@ -1410,6 +1410,7 @@ document.getElementById('btn-seq').addEventListener('click', function () {
     sel.appendChild(opt);
   });
   sel.addEventListener('change', function () {
+    seqUndoPush(true);
     SEQ.rhythmKey = this.value;
     const newSteps = seqSteps();
     SEQ.loopLen = newSteps;
@@ -1683,9 +1684,11 @@ document.getElementById('seq-note-len').addEventListener('input', function () {
   _syncGrooveUi(SEQ.groove);
 })();
 
-document.getElementById('btn-seq-panel-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
+document.getElementById('btn-seq-undo')?.addEventListener('click', () => _seqUndoPop());
+document.getElementById('btn-seq-panel-clear').addEventListener('click', () => { seqUndoPush(true); SEQ.grid = {}; scheduleDrawSequencer(); });
 
 document.getElementById('btn-seq-mirror')?.addEventListener('click', () => {
+  seqUndoPush(true);
   const len = SEQ.loopLen;
   const keys = Object.keys(SEQ.grid).filter(k => SEQ.grid[k]);
   keys.forEach(key => {
@@ -2156,6 +2159,46 @@ setSeqGridMutateCallback(() => {
     _persistSlots();
   }
 });
+
+// ── SEQ UNDO ────────────────────────────────────────────────────────
+const _seqUndoStack = [];
+const _SEQ_UNDO_MAX = 40;
+let _seqUndoDebounceT = 0;
+
+function _seqUndoSnapshot() {
+  return { grid: { ...SEQ.grid }, loopLen: SEQ.loopLen, rhythmKey: SEQ.rhythmKey };
+}
+
+function seqUndoPush(force = false) {
+  const now = Date.now();
+  if (!force && now - _seqUndoDebounceT < 300) return;
+  _seqUndoDebounceT = now;
+  _seqUndoStack.push(_seqUndoSnapshot());
+  if (_seqUndoStack.length > _SEQ_UNDO_MAX) _seqUndoStack.shift();
+  _syncSeqUndoBtn();
+}
+
+function _seqUndoPop() {
+  if (!_seqUndoStack.length) return;
+  const snap = _seqUndoStack.pop();
+  SEQ.grid = snap.grid;
+  SEQ.loopLen = snap.loopLen;
+  if (snap.rhythmKey !== SEQ.rhythmKey) {
+    SEQ.rhythmKey = snap.rhythmKey;
+    const sel = document.getElementById('seq-rhythm');
+    if (sel) sel.value = snap.rhythmKey;
+    if (seqEngine.playing) seqEngine.rebase();
+  }
+  scheduleDrawSequencer();
+  _syncSeqUndoBtn();
+}
+
+function _syncSeqUndoBtn() {
+  const btn = document.getElementById('btn-seq-undo');
+  if (btn) btn.disabled = _seqUndoStack.length === 0;
+}
+
+setSeqPreMutateCallback(() => seqUndoPush());
 setDrumGridMutateCallback(() => {
   if (_activeDrumSlot >= 0 && _drumSlots[_activeDrumSlot]) {
     _drumSlots[_activeDrumSlot] = { ..._drumSlots[_activeDrumSlot], grid: { ...DRUM_GRID }, loopLen: drumLoopLen };
@@ -2669,6 +2712,9 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
 
     outer.addEventListener('touchstart', e => {
       if (e.touches.length !== 1) return;
+      // Canvases have touch-action:none and handle pointer events themselves.
+      // Calling preventDefault on their touchmove breaks pointer event delivery.
+      if (e.target.tagName === 'CANVAS') { _sgDecided = true; _sgAllow = true; return; }
       _sgStartX = e.touches[0].clientX;
       _sgStartY = e.touches[0].clientY;
       _sgDecided = false;
