@@ -28,6 +28,7 @@ import {
 } from './sequencer.js';
 import { SOLO_SYNTH, soloMode, soloOctave, setSoloMode, setSoloOctave, renderSoloPads, playTonnetzNote, playTonnetzChord } from './solo.js';
 import { captureState, saveToFile, loadFromFile, saveClip, getClips, deleteClip, autosaveToCache, autoloadFromCache } from './project.js';
+import { GROOVE_TEMPLATES } from './groove.js';
 
 import {
   draw, addRipple, canvas, ctx, vizPanel, playChordNow,
@@ -109,13 +110,13 @@ function applyPeerBpm(bpm) {
 // ── syncPlayUI (full version, overrides sequencer's stub) ───────────
 
 function syncPlayUI(state) {
-  ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play'].forEach(id => {
+  ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play', 'btn-mob-footer-play'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? 'none' : '';
   });
-  ['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause'].forEach(id => {
+  ['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause', 'btn-mob-footer-pause'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? '' : 'none';
   });
-  ['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop'].forEach(id => {
+  ['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop', 'btn-mob-footer-stop'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state !== 'stopped' ? '' : 'none';
   });
   document.body.classList.toggle('seq-is-playing', state === 'playing');
@@ -123,15 +124,16 @@ function syncPlayUI(state) {
     const el = document.getElementById(id);
     if (el) el.style.display = state === 'playing' ? 'none' : '';
   });
+  if (state === 'playing') _startClipAnim();
 }
 
 function syncVizBpmUi() {
   const bpmText = String(document.getElementById('seq-bpm-val')?.textContent || SEQ.bpm || 120).trim();
-  ['viz-bpm-val', 'seq-panel-bpm-val', 'drum-panel-bpm-val'].forEach(id => {
+  ['viz-bpm-val', 'seq-panel-bpm-val', 'drum-panel-bpm-val', 'mob-footer-bpm-val'].forEach(id => {
     const valueEl = document.getElementById(id);
     if (valueEl) valueEl.textContent = bpmText;
   });
-  ['btn-viz-bpm', 'btn-seq-panel-bpm', 'btn-drum-panel-bpm'].forEach(id => {
+  ['btn-viz-bpm', 'btn-seq-panel-bpm', 'btn-drum-panel-bpm', 'btn-mob-footer-bpm'].forEach(id => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.title = `Set tempo (${bpmText} BPM)`;
@@ -751,7 +753,7 @@ function syncAudioUi() {
       : '<svg class="hdr-icon"><use href="#icon-muted"></use></svg><span class="btn-text"> Muted</span>';
   }
 
-  ['btn-viz-mute', 'btn-seq-panel-mute', 'btn-drum-panel-mute'].forEach(id => {
+  ['btn-viz-mute', 'btn-seq-panel-mute', 'btn-drum-panel-mute', 'btn-mob-footer-mute'].forEach(id => {
     const vizBtn = document.getElementById(id);
     if (!vizBtn) return;
     vizBtn.classList.toggle('active-audio', audio.enabled);
@@ -778,6 +780,7 @@ function syncMixerUi(open) {
   document.getElementById('btn-viz-mixer')?.classList.toggle('active-mixer', open);
   document.getElementById('btn-seq-panel-mixer')?.classList.toggle('active-mixer', open);
   document.getElementById('btn-drum-panel-mixer')?.classList.toggle('active-mixer', open);
+  document.getElementById('btn-mob-footer-mixer')?.classList.toggle('active-mixer', open);
 }
 
 function triggerSequencerPlay() {
@@ -820,6 +823,7 @@ document.getElementById('btn-audio')?.addEventListener('click', () => toggleAudi
 document.getElementById('btn-viz-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-seq-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-drum-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
+document.getElementById('btn-mob-footer-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-viz-mixer')?.addEventListener('click', () => {
   document.getElementById('btn-mixer')?.click();
 });
@@ -829,6 +833,9 @@ document.getElementById('btn-seq-panel-mixer')?.addEventListener('click', () => 
 document.getElementById('btn-drum-panel-mixer')?.addEventListener('click', () => {
   document.getElementById('btn-mixer')?.click();
 });
+document.getElementById('btn-mob-footer-mixer')?.addEventListener('click', () => {
+  document.getElementById('btn-mixer')?.click();
+});
 document.getElementById('btn-viz-bpm')?.addEventListener('click', () => {
   document.getElementById('bpm-display-btn')?.click();
 });
@@ -836,6 +843,9 @@ document.getElementById('btn-seq-panel-bpm')?.addEventListener('click', () => {
   document.getElementById('bpm-display-btn')?.click();
 });
 document.getElementById('btn-drum-panel-bpm')?.addEventListener('click', () => {
+  document.getElementById('bpm-display-btn')?.click();
+});
+document.getElementById('btn-mob-footer-bpm')?.addEventListener('click', () => {
   document.getElementById('bpm-display-btn')?.click();
 });
 const seqBpmValEl = document.getElementById('seq-bpm-val');
@@ -1633,14 +1643,66 @@ document.getElementById('seq-note-len').addEventListener('input', function () {
   applyNoteLen(v);
   Sync.send({ type: 'SEQ_PARAM', noteLen: v, gate: SEQ.gate });
 });
+
+// ── GROOVE UI ────────────────────────────────────────────────────────
+(function () {
+  function applyGroove(template, accentPct) {
+    SEQ.groove.template = template;
+    SEQ.groove.accent   = accentPct / 100;
+    _syncGrooveUi(SEQ.groove);
+    Sync.send({ type: 'SEQ_PARAM', groove: { ...SEQ.groove } });
+  }
+
+  ['seq-groove-template', 'drum-groove-template'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    GROOVE_TEMPLATES.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      if (t === SEQ.groove.template) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', function () {
+      const pct = Math.round(SEQ.groove.accent * 100);
+      applyGroove(this.value, pct);
+    });
+  });
+
+  ['seq-groove-accent', 'drum-groove-accent'].forEach(id => {
+    const sl = document.getElementById(id);
+    if (!sl) return;
+    sl.value = Math.round(SEQ.groove.accent * 100);
+    sl.addEventListener('input', function () {
+      const vl = document.getElementById(id.replace('accent', 'accent-val'));
+      if (vl) vl.textContent = this.value;
+      applyGroove(SEQ.groove.template, parseInt(this.value));
+    });
+  });
+
+  // Init display values
+  _syncGrooveUi(SEQ.groove);
+})();
+
 document.getElementById('btn-seq-panel-clear').addEventListener('click', () => { SEQ.grid = {}; scheduleDrawSequencer(); });
-['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play'].forEach(id => {
+
+document.getElementById('btn-seq-mirror')?.addEventListener('click', () => {
+  const len = SEQ.loopLen;
+  const keys = Object.keys(SEQ.grid).filter(k => SEQ.grid[k]);
+  keys.forEach(key => {
+    const [siStr, stStr] = key.split('_');
+    const mirrorSt = len - 1 - parseInt(stStr, 10);
+    const mirrorKey = `${siStr}_${mirrorSt}`;
+    SEQ.grid[mirrorKey] = 1;
+  });
+  scheduleDrawSequencer();
+});
+['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play', 'btn-mob-footer-play'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => triggerSequencerPlay());
 });
-['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause'].forEach(id => {
+['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause', 'btn-mob-footer-pause'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => seqEngine.pause());
 });
-['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop'].forEach(id => {
+['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop', 'btn-mob-footer-stop'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => seqEngine.stop());
 });
 
@@ -1833,40 +1895,194 @@ function _loadSlots() {
   } catch { /* corrupt */ }
 }
 
+function _drawClipMini(cvs, clip, isSeq) {
+  const W = cvs.offsetWidth, H = cvs.offsetHeight;
+  if (W === 0 || H === 0) return;
+  const DPR = window.devicePixelRatio || 1;
+  cvs.width  = W * DPR;
+  cvs.height = H * DPR;
+  const ctx = cvs.getContext('2d');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const clipGrid = clip.grid || {};
+  const loopLen  = Math.max(clip.loopLen || 16, 1);
+  const keys     = Object.keys(clipGrid).filter(k => !!clipGrid[k]);
+  if (!keys.length) return;
+
+  const gW = W / loopLen;
+
+  if (isSeq) {
+    // keys are "${si}_${step}"
+    let maxSi = 0;
+    for (const k of keys) {
+      const si = parseInt(k);  // parseInt stops at first non-digit → parses si
+      if (si > maxSi) maxSi = si;
+    }
+    const rows = maxSi + 1;
+    const gH   = H / rows;
+
+    for (const k of keys) {
+      const under = k.indexOf('_');
+      const si = parseInt(k.substring(0, under));
+      const st = parseInt(k.substring(under + 1));
+      if (st >= loopLen) continue;
+      const row = rows - 1 - si;  // flip: si 0 = bottom
+      ctx.fillStyle = 'rgba(167,139,250,0.82)';
+      ctx.fillRect(st * gW + 0.5, row * gH + 0.5, Math.max(gW - 1, 1), Math.max(gH - 1, 1));
+    }
+  } else {
+    // keys are "${drumKey}_${step}" — split at last underscore
+    const keyOrder = [];
+    const keySet   = new Set();
+    for (const k of keys) {
+      const last = k.lastIndexOf('_');
+      const dk   = k.substring(0, last);
+      if (!keySet.has(dk)) { keySet.add(dk); keyOrder.push(dk); }
+    }
+    const rows = keyOrder.length;
+    const gH   = H / rows;
+
+    for (const k of keys) {
+      const last = k.lastIndexOf('_');
+      const dk   = k.substring(0, last);
+      const st   = parseInt(k.substring(last + 1));
+      if (st >= loopLen) continue;
+      const row  = keyOrder.indexOf(dk);
+      const kl   = dk.toLowerCase();
+      let color;
+      if (kl.includes('bassdrum') || kl.includes('kick')) color = 'rgba(251,146,60,0.82)';
+      else if (kl.includes('snare'))                       color = 'rgba(167,139,250,0.75)';
+      else if (kl.includes('clap'))                        color = 'rgba(244,114,182,0.75)';
+      else if (kl.includes('hat') || kl.includes('hihat')) color = 'rgba(52,211,153,0.75)';
+      else                                                  color = 'rgba(96,165,250,0.70)';
+      ctx.fillStyle = color;
+      ctx.fillRect(st * gW + 0.5, row * gH + 0.5, Math.max(gW - 1, 1), Math.max(gH - 1, 1));
+    }
+  }
+
+  // Subtle beat grid lines (assume spb=4)
+  for (let st = 1; st < loopLen; st++) {
+    const x = st * gW;
+    ctx.strokeStyle = st % 4 === 0 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+}
+
+// ── Clip cell animation (playhead) ──────────────────────────────────
+let _miniCanvasRefs = [];  // { cvs, clip, isSeq, baseImgData }
+let _clipAnimRaf    = null;
+
+function _drawClipPlayheads() {
+  const DPR = window.devicePixelRatio || 1;
+  for (const item of _miniCanvasRefs) {
+    const { cvs, clip, isSeq, slotIdx, baseImgData } = item;
+    if (!baseImgData) continue;
+    const ctx = cvs.getContext('2d');
+
+    const isActive = isSeq ? _activeSeqSlot === slotIdx : _activeDrumSlot === slotIdx;
+    if (!isActive) continue; // only animate the playing cell
+
+    ctx.putImageData(baseImgData, 0, 0);
+
+    const loopLen = Math.max(clip.loopLen || 16, 1);
+    const rawStep = isSeq
+      ? seqEngine.displayStep
+      : (seqEngine.drumDisplayStep ?? seqEngine.displayStep);
+    const step = rawStep % loopLen;
+    const W  = cvs.width / DPR;
+    const H  = cvs.height / DPR;
+    const gW = W / loopLen;
+    const x  = (step + 0.5) * gW;
+
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,0.80)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function _tickClipAnim() {
+  if (!seqEngine.playing) {
+    _clipAnimRaf = null;
+    // Restore base on the cell that was animating (remove playhead)
+    for (const { cvs, isSeq, slotIdx, baseImgData } of _miniCanvasRefs) {
+      const wasActive = isSeq ? _activeSeqSlot === slotIdx : _activeDrumSlot === slotIdx;
+      if (wasActive && baseImgData) cvs.getContext('2d').putImageData(baseImgData, 0, 0);
+    }
+    return;
+  }
+  _clipAnimRaf = requestAnimationFrame(_tickClipAnim);
+  _drawClipPlayheads();
+}
+
+function _startClipAnim() {
+  if (_clipAnimRaf) return;
+  _tickClipAnim();
+}
+
 function renderClipSlots() {
   const grid = document.getElementById('clips-grid');
   if (!grid) return;
   grid.innerHTML = '';
-  // 8 rows × 4 cols
+  const miniCanvases = [];
+
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < 4; col++) {
-      const isSeq = col < 2;
+      const isSeq   = col < 2;
       const slotIdx = isSeq ? row * 2 + col : (row * 2 + (col - 2));
-      const slots = isSeq ? _seqSlots : _drumSlots;
-      const clip  = slots[slotIdx];
-      const active = isSeq ? _activeSeqSlot === slotIdx : _activeDrumSlot === slotIdx;
+      const slots   = isSeq ? _seqSlots : _drumSlots;
+      const clip    = slots[slotIdx];
+      const active  = isSeq ? _activeSeqSlot === slotIdx : _activeDrumSlot === slotIdx;
 
       const btn = document.createElement('button');
-      btn.className = 'clip-cell' + (clip ? ' filled' : '') + (active ? ' active' : '');
+      btn.className    = 'clip-cell' + (clip ? ' filled' : '') + (active ? ' active' : '');
       btn.dataset.type = isSeq ? 'seq' : 'drum';
       btn.dataset.idx  = slotIdx;
 
-      const num = document.createElement('span');
-      num.className = 'clip-num';
-      num.textContent = slotIdx + 1;
-      btn.appendChild(num);
+      if (!clip) {
+        const num = document.createElement('span');
+        num.className   = 'clip-num';
+        num.textContent = slotIdx + 1;
+        btn.appendChild(num);
+      }
 
       if (clip) {
-        const lbl = document.createElement('span');
-        lbl.className = 'clip-label';
-        lbl.textContent = clip.label || '';
-        btn.appendChild(lbl);
+        const cvs = document.createElement('canvas');
+        cvs.className = 'clip-mini-canvas';
+        btn.appendChild(cvs);
+        const item = { cvs, clip, isSeq, slotIdx, baseImgData: null };
+        miniCanvases.push(item);
+
+        const icon = document.createElement('div');
+        icon.className = 'clip-play-icon';
+        icon.innerHTML = active
+          ? `<svg viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="1.5" width="3.5" height="11" rx=".6"/><rect x="8.5" y="1.5" width="3.5" height="11" rx=".6"/></svg>`
+          : `<svg viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 2,13 12,7"/></svg>`;
+        btn.appendChild(icon);
       }
 
       btn.addEventListener('click', () => activateClipSlot(isSeq ? 'seq' : 'drum', slotIdx));
       grid.appendChild(btn);
     }
   }
+
+  // Draw base content after layout, cache ImageData, then start animation
+  requestAnimationFrame(() => {
+    const DPR = window.devicePixelRatio || 1;
+    for (const item of miniCanvases) {
+      _drawClipMini(item.cvs, item.clip, item.isSeq);
+      const W = item.cvs.offsetWidth, H = item.cvs.offsetHeight;
+      if (W > 0 && H > 0) {
+        item.baseImgData = item.cvs.getContext('2d').getImageData(0, 0, W * DPR, H * DPR);
+      }
+    }
+    _miniCanvasRefs = miniCanvases;
+    if (seqEngine.playing) _startClipAnim();
+  });
 }
 
 function activateClipSlot(type, idx) {
@@ -1900,6 +2116,7 @@ function activateClipSlot(type, idx) {
 
   if (!seqEngine.playing) {
     apply();
+    triggerSequencerPlay();
   } else {
     const prev = seqEngine._pendingClipApply;
     seqEngine._pendingClipApply = prev ? () => { prev(); apply(); } : apply;
@@ -2444,6 +2661,44 @@ document.querySelectorAll('.slide-dot').forEach(dot => {
     scheduleDrawSequencer(); scheduleDrmDraw(); resize();
   }, 80);
 
+  // Swipe guard: require ~48px of clear horizontal intent before allowing slide navigation.
+  // Prevents accidental slide-changes when tapping note cells or subheader buttons.
+  if (outer) {
+    const SWIPE_H_THRESHOLD = 48;
+    let _sgStartX = 0, _sgStartY = 0, _sgDecided = false, _sgAllow = false;
+
+    outer.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      _sgStartX = e.touches[0].clientX;
+      _sgStartY = e.touches[0].clientY;
+      _sgDecided = false;
+      _sgAllow = false;
+    }, { passive: true });
+
+    outer.addEventListener('touchmove', e => {
+      if (_sgDecided) {
+        if (!_sgAllow) e.preventDefault();
+        return;
+      }
+      const dx = Math.abs(e.touches[0].clientX - _sgStartX);
+      const dy = Math.abs(e.touches[0].clientY - _sgStartY);
+      if (dx + dy < 6) return;
+
+      if (dy > dx * 1.2) {
+        _sgDecided = true; _sgAllow = false;
+        e.preventDefault();
+      } else if (dx >= SWIPE_H_THRESHOLD && dx > dy) {
+        _sgDecided = true; _sgAllow = true;
+      } else {
+        // Horizontal movement building but below threshold — hold scroll
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    outer.addEventListener('touchend', () => { _sgDecided = false; _sgAllow = false; }, { passive: true });
+    outer.addEventListener('touchcancel', () => { _sgDecided = false; _sgAllow = false; }, { passive: true });
+  }
+
   const mobTempSel = document.getElementById('mob-temp-sel');
   Object.entries(TEMPERAMENTS).forEach(([k, v]) => {
     const opt = document.createElement('option');
@@ -2493,6 +2748,7 @@ function syncGetFullState() {
     noteLen: SEQ.noteLen,
     gate: SEQ.gate,
     loopLen: SEQ.loopLen,
+    groove: { ...SEQ.groove },
     grid: { ...SEQ.grid },
     drumGrid: { ...DRUM_GRID },
     drumLoopLen,
@@ -2514,6 +2770,7 @@ function syncApplyFullState(msg) {
   else if (msg.gate !== undefined) SEQ.gate = msg.gate; // legacy peers
   if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
   if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
+  if (msg.groove) Object.assign(SEQ.groove, msg.groove);
   if (msg.grid) SEQ.grid = { ...msg.grid };
   if (msg.drumGrid) {
     Object.keys(DRUM_GRID).forEach(k => delete DRUM_GRID[k]);
@@ -2534,6 +2791,19 @@ function syncUpdateUI(msg) {
     const sl = document.getElementById('seq-note-len'); if (sl) sl.value = msg.noteLen;
     const vl = document.getElementById('seq-note-len-val'); if (vl) vl.textContent = msg.noteLen;
   }
+  if (msg.groove) _syncGrooveUi(msg.groove);
+}
+
+function _syncGrooveUi(groove) {
+  const pct = Math.round((groove.accent ?? 0) * 100);
+  ['seq', 'drum'].forEach(prefix => {
+    const sel = document.getElementById(`${prefix}-groove-template`);
+    const sl  = document.getElementById(`${prefix}-groove-accent`);
+    const vl  = document.getElementById(`${prefix}-groove-accent-val`);
+    if (sel && groove.template !== undefined) sel.value = groove.template;
+    if (sl)  sl.value       = pct;
+    if (vl)  vl.textContent = pct;
+  });
 }
 
 function syncHandleMessage(msg) {
@@ -2590,6 +2860,7 @@ function syncHandleMessage(msg) {
       else if (msg.gate !== undefined) SEQ.gate = msg.gate;
       if (msg.loopLen !== undefined) SEQ.loopLen = msg.loopLen;
       if (msg.drumLoopLen !== undefined) setDrumLoopLen(msg.drumLoopLen);
+      if (msg.groove) Object.assign(SEQ.groove, msg.groove);
       syncUpdateUI(msg);
       if (seqEngine.playing) seqEngine.rebase(true);
       scheduleDrawSequencer(); scheduleDrmDraw();
@@ -2823,9 +3094,10 @@ function applyProjectSnapshot(snap) {
 
   // Sequencer
   if (snap.sequencer) {
-    const { grid, ...seqMeta } = snap.sequencer;
+    const { grid, groove, ...seqMeta } = snap.sequencer;
     Object.assign(SEQ, seqMeta);
     SEQ.grid = grid ? { ...grid } : {};
+    if (groove) Object.assign(SEQ.groove, groove);
     const bpmSl = document.getElementById('seq-bpm');
     const bpmVl = document.getElementById('seq-bpm-val');
     if (bpmSl) bpmSl.value = SEQ.bpm;
@@ -2837,6 +3109,7 @@ function applyProjectSnapshot(snap) {
     applyNoteLen(SEQ.noteLen);
     const rhythmSel = document.getElementById('seq-rhythm');
     if (rhythmSel) rhythmSel.value = SEQ.rhythmKey;
+    _syncGrooveUi(SEQ.groove);
     syncVizBpmUi();
     scheduleDrawSequencer();
   }

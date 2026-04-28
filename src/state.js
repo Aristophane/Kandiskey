@@ -43,6 +43,10 @@ export const SEQ = {
   gate:      0.30,  // derived from noteLen; read directly by sequencer engine
   grid:      {},
   loopLen:   16,
+  groove: {
+    template: 'Straight',
+    accent:   0.25,
+  },
 };
 
 export let drumLoopLen = 16;

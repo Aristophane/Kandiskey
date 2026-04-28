@@ -3,7 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import { audio } from './audio.js';
-import { seqSteps, seqR, drumLoopLen, setDrumLoopLen } from './state.js';
+import { seqSteps, seqR, seqStepDur, drumLoopLen, setDrumLoopLen } from './state.js';
+import { getGrooveEvent, drumKeyRole } from './groove.js';
 
 // seqEngine reference — injected by sequencer.js after init to avoid circular import
 let seqEngine = { playing: false, drumDisplayStep: -1, displayStep: -1 };
@@ -337,8 +338,11 @@ function _drmCurrentLoopCount() {
 
 export function drumPlayStep(step, time, loopCount = 0) {
   if (!audio.enabled) return;
-  const keys    = _getBankKeys();
-  const actxNow = audio.actx.currentTime;
+  const keys       = _getBankKeys();
+  const actxNow    = audio.actx.currentTime;
+  const spb        = seqR().spb;
+  const stepDurSec = seqStepDur();
+
   for (let i = 0; i < keys.length; i++) {
     const key     = keys[i];
     const cellVal = DRUM_GRID[key + '_' + step];
@@ -348,13 +352,17 @@ export function drumPlayStep(step, time, loopCount = 0) {
     if (cellN > 1 && loopCount % cellN !== cellO) continue;
     const ab = drumBuffers[key];
     if (!ab) continue;
+    const role = drumKeyRole(key);
+    const { offsetSec, velocity } = getGrooveEvent({
+      step, spb, stepDurSec, role, baseVelocity: drumVelocity,
+    });
     const src = audio.actx.createBufferSource();
     src.buffer = ab;
     const g = audio.actx.createGain();
-    g.gain.value = drumVelocity;
+    g.gain.value = velocity;
     src.connect(g);
     g.connect(audio.drumBus);
-    src.start(Math.max(time, actxNow + 0.001));
+    src.start(Math.max(time + offsetSec, actxNow + 0.001));
   }
 }
 
@@ -391,8 +399,9 @@ export function drawDrumMachine() {
   const steps = seqSteps();
   const spb = seqR().spb;
   const LM = 48;
+  const DRM_BAR_H = 14;
   const gW = (W - LM) / steps;
-  const gH = H / n;
+  const gH = (H - DRM_BAR_H) / n;
 
   drumCtx.fillStyle = '#060410';
   drumCtx.fillRect(0, 0, W, H);
@@ -406,7 +415,7 @@ export function drawDrumMachine() {
   const drmLoopCount = transport?.drumLoopCount ?? 0;
 
   bankKeys.forEach((key, row) => {
-    const y = row * gH;
+    const y = DRM_BAR_H + row * gH;
     const isKick  = key.startsWith('bassdrum');
     const isSnare = key.startsWith('snare');
     const labelColor = isKick ? '#fb923c' : isSnare ? '#a78bfa' : 'rgba(255,255,255,0.45)';
@@ -472,30 +481,29 @@ export function drawDrumMachine() {
     const x = LM + st * gW;
     const isBar  = Math.abs(st % (spb * 4)) < 0.001;
     const isBeat = Number.isInteger(st / spb) || Math.abs(st % spb) < 0.001;
-    drumCtx.beginPath(); drumCtx.moveTo(x, 0); drumCtx.lineTo(x, H);
+    drumCtx.beginPath(); drumCtx.moveTo(x, DRM_BAR_H); drumCtx.lineTo(x, H);
     drumCtx.strokeStyle = isBar ? 'rgba(255,255,255,0.24)' : isBeat ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)';
     drumCtx.lineWidth = 1; drumCtx.stroke();
   }
   // Horizontal lines
   for (let row = 0; row <= n; row++) {
-    const y = row * gH;
+    const y = DRM_BAR_H + row * gH;
     drumCtx.beginPath(); drumCtx.moveTo(LM, y); drumCtx.lineTo(W, y);
     drumCtx.strokeStyle = 'rgba(255,255,255,0.06)'; drumCtx.lineWidth = 1; drumCtx.stroke();
   }
   // Label separator
-  drumCtx.beginPath(); drumCtx.moveTo(LM, 0); drumCtx.lineTo(LM, H);
+  drumCtx.beginPath(); drumCtx.moveTo(LM, DRM_BAR_H); drumCtx.lineTo(LM, H);
   drumCtx.strokeStyle = 'rgba(255,255,255,0.12)'; drumCtx.lineWidth = 1; drumCtx.stroke();
 
   // Loop length overlay — dim steps outside active drum loop
   const loopEndX = LM + drmLoop * gW;
   if (drmLoop < steps) {
     drumCtx.fillStyle = 'rgba(0,0,0,0.45)';
-    drumCtx.fillRect(loopEndX, 0, W - loopEndX, H);
-    drumCtx.beginPath(); drumCtx.moveTo(loopEndX, 0); drumCtx.lineTo(loopEndX, H);
+    drumCtx.fillRect(loopEndX, DRM_BAR_H, W - loopEndX, H - DRM_BAR_H);
+    drumCtx.beginPath(); drumCtx.moveTo(loopEndX, DRM_BAR_H); drumCtx.lineTo(loopEndX, H);
     drumCtx.strokeStyle = 'rgba(251,146,60,0.6)'; drumCtx.lineWidth = 2; drumCtx.stroke();
   }
-  // Loop handle bar — always drawn at top of grid
-  const DRM_BAR_H = 14;
+  // Loop handle bar — always drawn at top, above notes
   drumCtx.fillStyle = 'rgba(251,146,60,0.12)';
   drumCtx.fillRect(LM, 0, W - LM, DRM_BAR_H);
   drumCtx.fillStyle = 'rgba(251,146,60,0.58)';
@@ -552,10 +560,11 @@ function _drmCell(e) {
   const W = drumCanvas.clientWidth, H = drumCanvas.clientHeight;
   const bKeys = activeBankKeys();
   const n = bKeys.length;
-  if (px < 48 || n === 0) return null;
-  const gW = (W - 48) / seqSteps(), gH = H / n;
+  const BAR = 14;
+  if (px < 48 || n === 0 || py < BAR) return null;
+  const gW = (W - 48) / seqSteps(), gH = (H - BAR) / n;
   const st  = Math.floor((px - 48) / gW);
-  const row = Math.floor(py / gH);
+  const row = Math.floor((py - BAR) / gH);
   if (st < 0 || st >= seqSteps() || row < 0 || row >= n) return null;
   return bKeys[row] + '_' + st;
 }

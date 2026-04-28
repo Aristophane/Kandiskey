@@ -8,6 +8,7 @@ import {
   epochMs, peerEpochMs, masterBpm, syncTempoRatio, drumLoopLen,
   setEpochMs, setPeerEpochMs, setMasterBpm,
 } from './state.js';
+import { getGrooveEvent } from './groove.js';
 import { CHROMATIC, MAQAM_CENTS } from './data.js';
 import { drumPlayStep, drawDrumMachine, scheduleDrmDraw } from './drum.js';
 import { sharedNow, sharedTimeToAudioTime } from './sync.js';
@@ -94,8 +95,11 @@ export const seqEngine = {
     const scale = getScale();
     const n = scale.length;
     if (n === 0) return;
-    const rootHz  = 261.62556 * Math.pow(2, S.root / 12) * Math.pow(2, S.octave - 4);
-    const noteDur = Math.max(seqStepDur() * SEQ.gate, 0.04);
+    const rootHz    = 261.62556 * Math.pow(2, S.root / 12) * Math.pow(2, S.octave - 4);
+    const stepDur   = seqStepDur();
+    const noteDur   = Math.max(stepDur * SEQ.gate, 0.04);
+    const spb       = seqR().spb;
+    const actxNow   = audio.actx.currentTime;
 
     for (let si = 0; si < n; si++) {
       const cellVal = SEQ.grid[`${si}_${step}`];
@@ -110,7 +114,11 @@ export const seqEngine = {
       } else {
         freq = audio.degreeFreq(S.root, scale[si], S.temp, S.octave);
       }
-      audio._playHz(freq, Math.max(time - audio.actx.currentTime, 0), noteDur, 0.72);
+      const { offsetSec, velocity } = getGrooveEvent({
+        step, spb, stepDurSec: stepDur, role: 'melody', baseVelocity: 0.72,
+      });
+      const eventTime = Math.max(actxNow + 0.001, time + offsetSec);
+      audio._playHz(freq, Math.max(eventTime - actxNow, 0), noteDur, velocity);
     }
   },
 
@@ -465,8 +473,9 @@ export function drawSequencer() {
   const steps = seqSteps();
   const spb   = seqR().spb;
   const LM    = 30;
+  const SEQ_BAR_H = 14;
   const gW    = (W - LM) / steps;
-  const gH    = H / Math.max(n, 1);
+  const gH    = (H - SEQ_BAR_H) / Math.max(n, 1);
 
   seqCtx.fillStyle = '#070512';
   seqCtx.fillRect(0, 0, W, H);
@@ -483,7 +492,7 @@ export function drawSequencer() {
 
   for (let row = 0; row < n; row++) {
     const si      = n - 1 - row;
-    const y       = row * gH;
+    const y       = SEQ_BAR_H + row * gH;
     const noteIdx = (scale[si] + S.root) % 12;
     const isRoot  = si === 0;
 
@@ -547,28 +556,27 @@ export function drawSequencer() {
     const x      = LM + st * gW;
     const isBar  = Math.abs(st % (spb * 4)) < 0.001;
     const isBeat = Number.isInteger(st / spb) || Math.abs(st % spb) < 0.001;
-    seqCtx.beginPath(); seqCtx.moveTo(x, 0); seqCtx.lineTo(x, H);
+    seqCtx.beginPath(); seqCtx.moveTo(x, SEQ_BAR_H); seqCtx.lineTo(x, H);
     seqCtx.strokeStyle = isBar ? 'rgba(255,255,255,0.24)' : isBeat ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)';
     seqCtx.lineWidth = 1; seqCtx.stroke();
   }
   for (let row = 0; row <= n; row++) {
-    const y = row * gH;
+    const y = SEQ_BAR_H + row * gH;
     seqCtx.beginPath(); seqCtx.moveTo(LM, y); seqCtx.lineTo(W, y);
     seqCtx.strokeStyle = 'rgba(255,255,255,0.07)'; seqCtx.lineWidth = 1; seqCtx.stroke();
   }
-  seqCtx.beginPath(); seqCtx.moveTo(LM, 0); seqCtx.lineTo(LM, H);
+  seqCtx.beginPath(); seqCtx.moveTo(LM, SEQ_BAR_H); seqCtx.lineTo(LM, H);
   seqCtx.strokeStyle = 'rgba(255,255,255,0.14)'; seqCtx.lineWidth = 1; seqCtx.stroke();
 
   const loopLen = Math.max(1, Math.min(SEQ.loopLen, steps));
   const loopEndX = LM + loopLen * gW;
   if (loopLen < steps) {
     seqCtx.fillStyle = 'rgba(0,0,0,0.45)';
-    seqCtx.fillRect(loopEndX, 0, W - loopEndX, H);
-    seqCtx.beginPath(); seqCtx.moveTo(loopEndX, 0); seqCtx.lineTo(loopEndX, H);
+    seqCtx.fillRect(loopEndX, SEQ_BAR_H, W - loopEndX, H - SEQ_BAR_H);
+    seqCtx.beginPath(); seqCtx.moveTo(loopEndX, SEQ_BAR_H); seqCtx.lineTo(loopEndX, H);
     seqCtx.strokeStyle = 'rgba(167,139,250,0.6)'; seqCtx.lineWidth = 2; seqCtx.stroke();
   }
-  // Loop handle bar — always drawn at top of grid
-  const SEQ_BAR_H = 14;
+  // Loop handle bar — always drawn at top of grid, above notes
   seqCtx.fillStyle = 'rgba(245,158,11,0.12)';
   seqCtx.fillRect(LM, 0, W - LM, SEQ_BAR_H);
   seqCtx.fillStyle = 'rgba(245,158,11,0.58)';
@@ -631,9 +639,10 @@ function _seqCell(e) {
   const px   = e.clientX - rect.left, py = e.clientY - rect.top;
   const W    = seqCanvas.clientWidth,  H  = seqCanvas.clientHeight;
   const scale = getScale(), n = scale.length;
-  if (n === 0 || px < 30) return null;
-  const gW = (W - 30) / seqSteps(), gH = H / n;
-  const st = Math.floor((px - 30) / gW), row = Math.floor(py / gH);
+  const BAR = 14;
+  if (n === 0 || px < 30 || py < BAR) return null;
+  const gW = (W - 30) / seqSteps(), gH = (H - BAR) / n;
+  const st = Math.floor((px - 30) / gW), row = Math.floor((py - BAR) / gH);
   const si = n - 1 - row;
   if (st < 0 || st >= seqSteps() || si < 0 || si >= n) return null;
   return `${si}_${st}`;

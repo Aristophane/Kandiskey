@@ -570,6 +570,7 @@ header p { display: none; }
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.03);
   cursor: pointer;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -586,8 +587,35 @@ header p { display: none; }
 .clip-cell.active[data-type="seq"]  { background: rgba(52,211,153,0.22); border-color: rgba(52,211,153,0.75); color: #34d399; box-shadow: 0 0 7px rgba(52,211,153,0.35); }
 .clip-cell.active[data-type="drum"] { background: rgba(251,146,60,0.22); border-color: rgba(251,146,60,0.75); color: #fb923c; box-shadow: 0 0 7px rgba(251,146,60,0.35); }
 .clip-cell:active { transform: scale(0.93); }
-.clip-num   { font-size: 0.52rem; opacity: 0.45; line-height: 1; }
-.clip-label { font-size: 0.48rem; opacity: 0.7; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.clip-mini-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  border-radius: 4px;
+}
+.clip-num {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 0.52rem;
+  opacity: 0.45;
+  line-height: 1;
+  z-index: 1;
+}
+.clip-play-icon {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 9px;
+  height: 9px;
+  z-index: 2;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.clip-play-icon svg { width: 100%; height: 100%; display: block; }
 
 /* ── FRETBOARD PANEL ── */
 #fretboard-wrap {
@@ -1335,6 +1363,9 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
 /* Nav dots hidden everywhere except mobile */
 #slide-nav { display: none; }
 
+/* ── MOBILE FOOTER ── */
+#mob-footer { display: none; }
+
 /* ── RESPONSIVE: medium screens (1025px–1100px) — scale sidebar narrows, chord hides ── */
 @media (max-width: 1100px) and (min-width: 1025px) {
   #slide-scale { width: 210px; }
@@ -1657,7 +1688,7 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
   .hdr-bpm .tap-btn { display: none; }
 
   /* Hide mute in viz-transport while playing — pause already visible */
-  body.seq-is-playing #btn-viz-mute { display: none; }
+  /* mute icon always visible on viz slide */
 
   /* Mobile transport FABs — inline in viz-transport row */
   #mob-btn-play, #mob-btn-pause, #mob-btn-stop {
@@ -1789,6 +1820,84 @@ select.sm { padding: 4px 22px 4px 7px; font-size: 0.7rem; width: auto; }
     min-height: 52px;
     padding: 0 6px;
     font-size: 0.75rem;
+  }
+
+  /* ── Mobile footer ── */
+  #mob-footer {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 490;
+    background: linear-gradient(180deg, rgba(18,14,34,0.96), rgba(11,8,24,0.96));
+    border-top: 1px solid rgba(255,255,255,0.08);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+  body.on-viz-slide #mob-footer {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(100%);
+  }
+  .mob-footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .mob-footer-btn {
+    width: 42px;
+    height: 42px;
+  }
+  /* BPM button in footer needs flex layout */
+  #btn-mob-footer-bpm {
+    display: flex;
+  }
+  /* Mute button color in footer */
+  #btn-mob-footer-mute {
+    background: rgba(245,158,11,0.14);
+    border-color: rgba(245,158,11,0.42);
+    color: #fcd34d;
+  }
+  #btn-mob-footer-mute.muted {
+    background: rgba(245,158,11,0.08);
+    border-color: rgba(245,158,11,0.22);
+    color: rgba(245,158,11,0.40);
+  }
+  #btn-mob-footer-mixer.active-mixer {
+    background: rgba(96,165,250,0.22);
+    border-color: rgba(96,165,250,0.7);
+    color: #dbeafe;
+  }
+
+  /* Hide transport group from seq/drum subheaders on mobile — footer has them */
+  #seq-wrap .panel-subheader-group:first-child,
+  #drum-wrap .panel-subheader-group:first-child {
+    display: none;
+  }
+  /* Hide mixer + BPM from subheaders on mobile — footer has them */
+  #btn-seq-panel-mixer, #btn-seq-panel-bpm,
+  #btn-drum-panel-mixer, #btn-drum-panel-bpm {
+    display: none !important;
+  }
+  /* Center remaining subheader buttons */
+  #seq-wrap .panel-subheader,
+  #drum-wrap .panel-subheader {
+    justify-content: center;
+  }
+  #seq-wrap .panel-subheader-right,
+  #drum-wrap .panel-subheader-right {
+    margin-left: 0;
+  }
+
+  /* Push canvases and clips grid above footer */
+  #seq-wrap .seq-panel,
+  #drum-wrap .seq-panel {
+    padding-bottom: 62px;
+  }
+  #clips-wrap .clips-panel {
+    padding-bottom: 62px;
   }
 }
 
