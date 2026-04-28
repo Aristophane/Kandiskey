@@ -1882,6 +1882,8 @@ let _seqSlots     = Array(SEQ_SLOTS).fill(null);
 let _drumSlots    = Array(DRUM_SLOTS).fill(null);
 let _activeSeqSlot  = -1;
 let _activeDrumSlot = -1;
+let _pendingSeqSlot  = -1;
+let _pendingDrumSlot = -1;
 let _autoSeqRing  = -1;
 let _autoDrmRing  = -1;
 
@@ -2039,10 +2041,11 @@ function renderClipSlots() {
       const slotIdx = isSeq ? row * 2 + col : (row * 2 + (col - 2));
       const slots   = isSeq ? _seqSlots : _drumSlots;
       const clip    = slots[slotIdx];
-      const active  = isSeq ? _activeSeqSlot === slotIdx : _activeDrumSlot === slotIdx;
+      const active  = isSeq ? _activeSeqSlot === slotIdx  : _activeDrumSlot  === slotIdx;
+      const pending = isSeq ? _pendingSeqSlot === slotIdx : _pendingDrumSlot === slotIdx;
 
       const btn = document.createElement('button');
-      btn.className    = 'clip-cell' + (clip ? ' filled' : '') + (active ? ' active' : '');
+      btn.className    = 'clip-cell' + (clip ? ' filled' : '') + (active ? ' active' : '') + (pending ? ' pending' : '');
       btn.dataset.type = isSeq ? 'seq' : 'drum';
       btn.dataset.idx  = slotIdx;
 
@@ -2093,9 +2096,11 @@ function activateClipSlot(type, idx) {
   const clip  = (isSeq ? _seqSlots : _drumSlots)[idx];
   if (!clip) return;
 
-  // Toggle off if already active
-  if ((isSeq ? _activeSeqSlot : _activeDrumSlot) === idx) {
-    if (isSeq) _activeSeqSlot = -1; else _activeDrumSlot = -1;
+  // Toggle off if already active or pending
+  if ((isSeq ? _activeSeqSlot : _activeDrumSlot) === idx ||
+      (isSeq ? _pendingSeqSlot : _pendingDrumSlot) === idx) {
+    if (isSeq) { _activeSeqSlot = -1; _pendingSeqSlot = -1; }
+    else       { _activeDrumSlot = -1; _pendingDrumSlot = -1; }
     seqEngine._pendingClipApply = null;
     renderClipSlots();
     return;
@@ -2105,13 +2110,15 @@ function activateClipSlot(type, idx) {
     if (isSeq) {
       SEQ.grid = { ...clip.grid };
       if (clip.loopLen !== undefined) SEQ.loopLen = clip.loopLen;
-      _activeSeqSlot = idx;
+      _activeSeqSlot  = idx;
+      _pendingSeqSlot = -1;
       scheduleDrawSequencer();
     } else {
       for (const k of Object.keys(DRUM_GRID)) delete DRUM_GRID[k];
       Object.assign(DRUM_GRID, clip.grid);
       if (clip.loopLen !== undefined) setDrumLoopLen(clip.loopLen);
-      _activeDrumSlot = idx;
+      _activeDrumSlot  = idx;
+      _pendingDrumSlot = -1;
       scheduleDrmDraw();
     }
     renderClipSlots();
@@ -2121,6 +2128,7 @@ function activateClipSlot(type, idx) {
     apply();
     triggerSequencerPlay();
   } else {
+    if (isSeq) _pendingSeqSlot = idx; else _pendingDrumSlot = idx;
     const prev = seqEngine._pendingClipApply;
     seqEngine._pendingClipApply = prev ? () => { prev(); apply(); } : apply;
   }

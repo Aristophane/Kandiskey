@@ -586,6 +586,16 @@ header p { display: none; }
 .clip-cell.filled[data-type="drum"] { background: rgba(251,146,60,0.07); border-color: rgba(251,146,60,0.28); color: rgba(251,146,60,0.8); }
 .clip-cell.active[data-type="seq"]  { background: rgba(52,211,153,0.22); border-color: rgba(52,211,153,0.75); color: #34d399; box-shadow: 0 0 7px rgba(52,211,153,0.35); }
 .clip-cell.active[data-type="drum"] { background: rgba(251,146,60,0.22); border-color: rgba(251,146,60,0.75); color: #fb923c; box-shadow: 0 0 7px rgba(251,146,60,0.35); }
+@keyframes clip-pending-seq {
+  0%, 100% { background: rgba(52,211,153,0.07); border-color: rgba(52,211,153,0.28); box-shadow: none; }
+  50%       { background: rgba(52,211,153,0.26); border-color: rgba(52,211,153,0.78); box-shadow: 0 0 8px rgba(52,211,153,0.45); }
+}
+@keyframes clip-pending-drum {
+  0%, 100% { background: rgba(251,146,60,0.07); border-color: rgba(251,146,60,0.28); box-shadow: none; }
+  50%       { background: rgba(251,146,60,0.26); border-color: rgba(251,146,60,0.78); box-shadow: 0 0 8px rgba(251,146,60,0.45); }
+}
+.clip-cell.pending[data-type="seq"]  { animation: clip-pending-seq  0.55s ease-in-out infinite; }
+.clip-cell.pending[data-type="drum"] { animation: clip-pending-drum 0.55s ease-in-out infinite; }
 .clip-cell:active { transform: scale(0.93); }
 .clip-mini-canvas {
   position: absolute;
