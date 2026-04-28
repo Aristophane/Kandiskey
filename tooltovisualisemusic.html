@@ -17,6 +17,16 @@
         <path d="M19 13v4a2 2 0 0 1-2 2h-1v-8h1a2 2 0 0 1 2 2Z"/>
       </g>
     </symbol>
+    <symbol id="icon-mic-classic" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="8" y="3" width="8" height="12" rx="4"/>
+        <path d="M8 7h8"/>
+        <path d="M8 11h8"/>
+        <path d="M5 11a7 7 0 0 0 14 0"/>
+        <path d="M12 18v3"/>
+        <path d="M8 21h8"/>
+      </g>
+    </symbol>
     <symbol id="icon-muted" viewBox="0 0 24 24">
       <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 10v4h4l5 4V6L8 10H4Z"/>
@@ -416,6 +426,9 @@
             <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6"/>
           </svg>
         </button>
+        <button class="viz-quick-btn panel-round-btn seq-src-btn seq-sample-subheader-btn" id="seq-src-sample" data-source-mode="sample" title="Sample recorder" aria-label="Sample recorder" aria-expanded="false">
+          <svg class="hdr-icon"><use href="#icon-mic-classic"></use></svg>
+        </button>
         <button class="viz-quick-btn panel-round-btn panel-clear-btn" id="btn-seq-panel-clear" title="Clear grid" aria-label="Clear grid">✕</button>
         <button class="viz-quick-btn panel-round-btn" id="btn-seq-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
           <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
@@ -430,9 +443,9 @@
       <span class="seq-lbl">Rhythm</span>
       <select id="seq-rhythm" style="padding:3px 22px 3px 7px;font-size:0.68rem;width:auto"></select>
       <div class="seq-sep"></div>
-      <button class="midi-btn seq-src-btn active" id="seq-src-synth" title="Sound synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-wave" title="Draw waveform"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-vibrato-rate"></use></svg> Wave</button>
-      <button class="midi-btn seq-src-btn" id="seq-src-sample" title="Load sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-attack"></use></svg> Sample</button>
+      <button class="midi-btn seq-src-btn active" id="seq-src-synth" data-source-mode="synth" title="Sound synth"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-synth"></use></svg> Sound</button>
+      <button class="midi-btn seq-src-btn" id="seq-src-wave" data-source-mode="wave" title="Draw waveform"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-vibrato-rate"></use></svg> Wave</button>
+      <button class="midi-btn seq-src-btn seq-sample-desktop-btn" data-source-mode="sample" title="Load sample"><svg class="hdr-icon" style="width:0.9em;height:0.9em"><use href="#icon-mic-classic"></use></svg> Sample</button>
       <div class="seq-sep"></div>
       <span class="seq-lbl">Length</span>
       <input type="range" class="seq-sl" id="seq-note-len" min="0" max="100" step="1" value="25" style="width:55px">
@@ -474,12 +487,38 @@
     </div>
     <!-- Sample bar -->
     <div id="seq-sample-bar" class="seq-extra-bar" style="display:none">
+            <button class="midi-btn sample-rec-btn" id="sample-rec-btn" title="Record from microphone" aria-label="Record from microphone">
+        <span class="sample-rec-icon" aria-hidden="true"></span>
+        <span class="sample-rec-text">Record</span>
+      </button>
+      <button class="midi-btn" id="sample-trim-btn" style="display:none" title="Edit sample trim points">✂ Trim</button>
       <input type="file" id="sample-file-in" accept="audio/*" style="display:none">
-      <button class="midi-btn" id="sample-load-btn">⬆ Load file</button>
-      <span id="sample-name-lbl" class="midi-title" style="flex:1;min-width:0">No file loaded</span>
+      <button class="midi-btn" id="sample-load-btn">⬆ Load</button>
+
+      <span id="sample-rec-timer" style="display:none;font-size:0.72rem;font-family:monospace;color:#f87171;white-space:nowrap">● 00:00</span>
       <div class="seq-sep"></div>
-      <span class="seq-lbl">Root note</span>
+      <span id="sample-name-lbl" class="midi-title" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">No file loaded</span>
+      <div class="seq-sep"></div>
+      <label class="seq-lbl sample-autocut-lbl" title="Auto-trim silence at edges">
+        <input type="checkbox" id="sample-autocut" checked style="margin-right:3px">Autocut
+      </label>
+      <span class="seq-lbl sample-thresh-lbl">Thresh</span>
+      <input type="range" id="sample-autocut-thresh" class="seq-sl sample-thresh-sl" min="1" max="100" step="1" value="20" style="width:46px" title="Autocut silence threshold">
+      <div class="seq-sep"></div>
+      <span class="seq-lbl">Root</span>
       <select id="sample-root-note" class="sm" style="min-width:56px"></select>
+    </div>
+    <!-- Sample trim editor -->
+    <div id="seq-sample-trim-bar" class="seq-extra-bar sample-trim-bar" style="display:none">
+      <canvas id="sample-trim-cvs" height="72"></canvas>
+      <div class="sample-trim-footer">
+        <span class="seq-lbl">Start <span id="trim-start-lbl" class="seq-val">0.00s</span></span>
+        <span class="seq-sep"></span>
+        <span class="seq-lbl">End <span id="trim-end-lbl" class="seq-val">0.00s</span></span>
+        <span class="seq-lbl">Dur <span id="trim-dur-lbl" class="seq-val">0.00s</span></span>
+        <span style="flex:1"></span>
+        <button class="midi-btn" id="sample-trim-apply" title="Apply trim to sample">✓ Apply</button>
+      </div>
     </div>
     <div class="seq-canvas-wrap">
       <canvas id="seq-canvas"></canvas>
@@ -506,6 +545,12 @@
         </button>
       </div>
       <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-drum-undo" title="Undo last drum change" aria-label="Undo" disabled>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7h11a5 5 0 0 1 0 10H7"/>
+            <polyline points="7 3 3 7 7 11"/>
+          </svg>
+        </button>
         <button class="viz-quick-btn panel-round-btn params-drawer-btn" id="btn-drum-params" title="Drum settings" aria-label="Drum settings" aria-expanded="false">
           <svg viewBox="0 0 24 12" width="18" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M0 6 C3 0,6 0,9 6 S15 12,18 6 S21 0,24 6"/>
@@ -550,6 +595,37 @@
 <!-- ═══ CLIPS ═══ -->
 <div id="clips-wrap">
   <div class="seq-panel clips-panel">
+    <div class="panel-subheader" id="clips-subheader">
+      <div class="panel-subheader-group">
+        <button class="viz-quick-btn panel-round-btn mob-play-btn" id="btn-clips-panel-play" title="Play">
+          <svg viewBox="0 0 20 20" width="18" height="18"><polygon points="4,2 17,10 4,18" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn mob-pause-btn" id="btn-clips-panel-pause" title="Pause" style="display:none">
+          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="2" width="5" height="16" rx="1" fill="currentColor"/><rect x="12" y="2" width="5" height="16" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn mob-stop-btn" id="btn-clips-panel-stop" title="Stop" style="display:none">
+          <svg viewBox="0 0 20 20" width="18" height="18"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/></svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn active-audio" id="btn-clips-panel-mute" title="Mute audio" aria-label="Mute audio">
+          <svg class="hdr-icon"><use href="#icon-audio"></use></svg>
+        </button>
+      </div>
+      <div class="panel-subheader-group panel-subheader-right">
+        <button class="viz-quick-btn panel-round-btn seq-undo-btn" id="btn-clips-undo" title="Undo last clip activation" aria-label="Undo" disabled>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7h11a5 5 0 0 1 0 10H7"/>
+            <polyline points="7 3 3 7 7 11"/>
+          </svg>
+        </button>
+        <button class="viz-quick-btn panel-round-btn" id="btn-clips-panel-mixer" title="Mixer &amp; FX" aria-label="Open mixer">
+          <svg class="hdr-icon"><use href="#icon-mixer"></use></svg>
+        </button>
+        <button class="viz-quick-btn viz-bpm-btn panel-round-btn" id="btn-clips-panel-bpm" title="Set tempo" aria-label="Set tempo">
+          <span class="viz-bpm-value" id="clips-panel-bpm-val">120</span>
+          <span class="viz-bpm-label">BPM</span>
+        </button>
+      </div>
+    </div>
     <div class="seq-header">
       <span class="seq-lbl clips-col-hdr seq-col-hdr">SEQ</span>
       <span class="seq-lbl clips-col-hdr seq-col-hdr"></span>

@@ -13,6 +13,9 @@ export function setSeqEngineRef(ref) { seqEngine = ref; }
 let _onGridMutate = null;
 export function setDrumGridMutateCallback(fn) { _onGridMutate = fn; }
 
+let _onDrmPreMutate = null;
+export function setDrumPreMutateCallback(fn) { _onDrmPreMutate = fn; }
+
 // syncSend reference — injected by main.js
 let _syncSend = () => {};
 export function setSyncSend(fn) { _syncSend = fn; }
@@ -357,6 +360,7 @@ export function drumPlayStep(step, time, loopCount = 0) {
       step, spb, stepDurSec, role, baseVelocity: drumVelocity,
     });
     const src = audio.actx.createBufferSource();
+    audio.trackScheduledSource(src);
     src.buffer = ab;
     const g = audio.actx.createGain();
     g.gain.value = velocity;
@@ -383,7 +387,7 @@ export function scheduleDrmDraw() {
 
 export function drawDrumMachine() {
   const wrap = drumCanvas.parentElement;
-  const DPR = window.devicePixelRatio || 1;
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
   const W = wrap.clientWidth, H = wrap.clientHeight;
   if (W === 0 || H === 0) return;
   if (W !== _drmCacheW || H !== _drmCacheH || DPR !== _drmCacheDpr) {
@@ -576,6 +580,7 @@ drumCanvas.addEventListener('pointerdown', e => {
   const rect = drumCanvas.getBoundingClientRect();
   const py = e.clientY - rect.top;
   if (py < 16) {
+    if (_onDrmPreMutate) _onDrmPreMutate();
     _drmLoopDragActive = true;
     _drmLoopDragPtrId = e.pointerId;
     drumCanvas.setPointerCapture(e.pointerId);
@@ -591,6 +596,7 @@ drumCanvas.addEventListener('pointerdown', e => {
     _drmLpTimer = null;
     clearTimeout(_drmTapTimer); _drmTapKey = null; _drmTapCount = 0;
     if (DRUM_GRID[key]) {
+      if (_onDrmPreMutate) _onDrmPreMutate();
       delete DRUM_GRID[key];
       _syncSend({ type: 'DRUM_SET', key, val: false });
       scheduleDrmDraw();
@@ -629,10 +635,12 @@ drumCanvas.addEventListener('pointerup', e => {
     _drmTapCount = Math.min(_drmTapCount + 1, 4);
     const lc  = _drmCurrentLoopCount();
     const val = { n: _drmTapCount, o: lc % _drmTapCount };
+    if (_onDrmPreMutate) _onDrmPreMutate();
     DRUM_GRID[key] = val;
     _syncSend({ type: 'DRUM_SET', key, val });
   } else {
     _drmTapKey = key; _drmTapCount = 1;
+    if (_onDrmPreMutate) _onDrmPreMutate();
     if (DRUM_GRID[key]) { delete DRUM_GRID[key]; _syncSend({ type: 'DRUM_SET', key, val: false }); }
     else                { DRUM_GRID[key] = 1;    _syncSend({ type: 'DRUM_SET', key, val: 1    }); }
   }

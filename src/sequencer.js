@@ -47,10 +47,31 @@ export function setSeqPreMutateCallback(fn) { _onPreMutate = fn; }
 const seqCanvas = document.getElementById('seq-canvas');
 const seqCtx    = seqCanvas.getContext('2d');
 
-const SCHED_LOOK_AHEAD = 0.22;
+const SCHED_LOOK_AHEAD = 0.28;
+const TOUCH_SCHED_LOOK_AHEAD = 1.10;
+const TOUCH_SCHED_GRACE_MS = 1800;
 const START_LEAD_MS = 180;
 const SCHED_INTERVAL_MS = 12;
+const MAX_SCHED_STEPS_PER_TICK = 96;
 const STEP_EPS = 1e-4;
+
+let _lastTouchSchedulerPrimeMs = -Infinity;
+let _touchAudioDevice = null;
+
+function _isTouchAudioDevice() {
+  if (_touchAudioDevice !== null) return _touchAudioDevice;
+  _touchAudioDevice =
+    (navigator.maxTouchPoints || 0) > 0 ||
+    window.matchMedia?.('(pointer: coarse)')?.matches === true;
+  return _touchAudioDevice;
+}
+
+function _schedulerLookAhead() {
+  if (_isTouchAudioDevice()) return TOUCH_SCHED_LOOK_AHEAD;
+  return performance.now() - _lastTouchSchedulerPrimeMs < TOUCH_SCHED_GRACE_MS
+    ? TOUCH_SCHED_LOOK_AHEAD
+    : SCHED_LOOK_AHEAD;
+}
 
 function _parseTransportAnchor(anchor) {
   if (anchor === null || anchor === undefined) return null;
@@ -285,8 +306,9 @@ export const seqEngine = {
 
     if (this._barJoining) {
       const nextBarStep = Math.ceil((globalStep + 1) / loopLen) * loopLen;
+      const lookAhead = _schedulerLookAhead();
       const nextBarAudioT = sharedTimeToAudioTime(audio.actx, this.transportSharedMsForStep(nextBarStep));
-      if (nextBarAudioT <= now + SCHED_LOOK_AHEAD) {
+      if (nextBarAudioT <= now + lookAhead) {
         this._barJoining = false;
         this._lastSched = nextBarStep - 1;
       }
@@ -295,10 +317,16 @@ export const seqEngine = {
 
     if (this._lastSched === undefined) this._lastSched = _schedulerLastForStep(stepFloat);
 
-    for (let guard = 0; guard < 32; guard++) {
+    const lookAhead = _schedulerLookAhead();
+    const maxSteps = Math.min(
+      MAX_SCHED_STEPS_PER_TICK,
+      Math.max(32, Math.ceil(lookAhead / Math.max(seqStepDur(), 0.001)) + 4)
+    );
+
+    for (let guard = 0; guard < maxSteps; guard++) {
       const stepIdx = this._lastSched + 1;
       const audioT = sharedTimeToAudioTime(audio.actx, this.transportSharedMsForStep(stepIdx));
-      if (audioT > now + SCHED_LOOK_AHEAD) break;
+      if (audioT > now + lookAhead) break;
       if (audioT < now - 0.05) { this._lastSched = stepIdx; continue; }
       this._playStep(stepIdx % melLoop, audioT, Math.floor(stepIdx / melLoop));
       drumPlayStep(stepIdx % drmLoop, audioT, Math.floor(stepIdx / drmLoop));
@@ -308,6 +336,7 @@ export const seqEngine = {
 
   play(remoteAnchor = null) {
     this._stopScheduler();
+    audio.stopAll();
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     _stopMidiPlayer();
     audio._resume();
@@ -340,6 +369,7 @@ export const seqEngine = {
     }
 
     this._startScheduler();
+    this._tick();
     const raf = () => {
       if (!this.playing) return;
       drawSequencer();
@@ -371,6 +401,7 @@ export const seqEngine = {
     this._pausedAbsStep = Math.max(0, this._anchorAbsStep);
     this._barJoining = false;
     this._stopScheduler();
+    audio.stopAll();
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     _syncPlayUI('paused');
     scheduleDrawSequencer();
@@ -386,6 +417,7 @@ export const seqEngine = {
     this._pendingPeerAnchor = null;
     this._corrTick = 0;
     this._stopScheduler();
+    audio.stopAll();
     if (this._raf) cancelAnimationFrame(this._raf);
     this.displayStep = -1;
     this.drumDisplayStep = -1;
@@ -419,6 +451,19 @@ export const seqEngine = {
     this._corrTick = 12;
   },
 };
+
+function _primeSchedulerForTouch(event) {
+  if (event?.pointerType && event.pointerType !== 'touch') return;
+  _lastTouchSchedulerPrimeMs = performance.now();
+  if (!seqEngine.playing) return;
+  try { seqEngine._tick(); } catch (e) { console.error('[seq] touch prime error:', e); }
+}
+
+window.addEventListener('pointerdown', _primeSchedulerForTouch, { capture: true, passive: true });
+window.addEventListener('touchstart', _primeSchedulerForTouch, { capture: true, passive: true });
+window.addEventListener('contextmenu', e => {
+  if (_isTouchAudioDevice()) e.preventDefault();
+}, { capture: true });
 
 // ── Canvas draw ─────────────────────────────────────────────────────
 
@@ -461,7 +506,7 @@ const CYCLE_RGB = ['', '', '52,211,153', '251,146,60', '244,114,182'];
 
 export function drawSequencer() {
   const wrap = seqCanvas.parentElement;
-  const DPR  = window.devicePixelRatio || 1;
+  const DPR  = Math.min(window.devicePixelRatio || 1, 2);
   const W    = wrap.clientWidth, H = wrap.clientHeight;
   if (W === 0 || H === 0) return;
   if (W !== _seqCacheW || H !== _seqCacheH || DPR !== _seqCacheDpr) {

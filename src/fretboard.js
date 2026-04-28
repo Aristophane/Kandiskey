@@ -153,7 +153,7 @@ export function drawFretboard() {
   }
 
   const wrap = fbCanvas.parentElement;
-  const DPR  = window.devicePixelRatio || 1;
+  const DPR  = Math.min(window.devicePixelRatio || 1, 2);
   const W    = wrap.clientWidth, H = wrap.clientHeight;
   if (W === 0 || H === 0) return;
   if (W !== _fbCacheW || H !== _fbCacheH || DPR !== _fbCacheDpr) {

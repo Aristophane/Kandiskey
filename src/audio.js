@@ -12,6 +12,7 @@ export class AudioEngine {
     this.reverb = null;
     this.ready = false;
     this.enabled = true;
+    this.scheduledSources = new Set();
   }
 
   _init() {
@@ -57,13 +58,17 @@ export class AudioEngine {
     this.drumComp.threshold.value = -12; this.drumComp.ratio.value = 4;
     this.drumComp.attack.value = 0.003; this.drumComp.release.value = 0.1;
     this.drumBus.connect(this.drumComp);
-    this.drumComp.connect(this.actx.destination);
+    this.outputKill = this.actx.createGain();
+    this.outputKill.gain.value = 1;
+
+    this.drumComp.connect(this.outputKill);
 
     this.master.connect(this.filter);
     this.filter.connect(this.kill);
     this.kill.connect(comp);
     comp.connect(this.globalFilter);
-    this.globalFilter.connect(this.actx.destination);
+    this.globalFilter.connect(this.outputKill);
+    this.outputKill.connect(this.actx.destination);
     this.kill.connect(this.distNode);
     this.distNode.connect(this.distWet);
     this.distWet.connect(comp);
@@ -109,6 +114,14 @@ export class AudioEngine {
     return cv;
   }
 
+  trackScheduledSource(src) {
+    if (!src) return src;
+    this.scheduledSources.add(src);
+    const cleanup = () => this.scheduledSources.delete(src);
+    src.addEventListener?.('ended', cleanup, { once: true });
+    return src;
+  }
+
   // Precise frequency: root semitone + scale degree in chosen temperament
   degreeFreq(rootSemitone, degree, tempKey, octave = 4) {
     const C4 = 261.62556;
@@ -144,6 +157,7 @@ export class AudioEngine {
 
     if (SYNTH.sourceMode === 'sample' && SYNTH.sampleBuffer) {
       const src = this.actx.createBufferSource();
+      this.trackScheduledSource(src);
       src.buffer = SYNTH.sampleBuffer;
       src.playbackRate.value = hz / SYNTH.sampleBaseFreq;
       src.detune.value = SYNTH.detune;
@@ -157,6 +171,7 @@ export class AudioEngine {
     let lfo = null;
     if (SYNTH.vibratoDepth > 0) {
       lfo = this.actx.createOscillator();
+      this.trackScheduledSource(lfo);
       lfo.type = 'sine';
       lfo.frequency.value = SYNTH.vibratoRate;
       lfo.start(t + atk * 0.6);
@@ -165,6 +180,7 @@ export class AudioEngine {
 
     if (SYNTH.waveform !== 'sine') {
       const osc = this.actx.createOscillator();
+      this.trackScheduledSource(osc);
       if (SYNTH.waveform === 'custom' && SYNTH.customWave) {
         osc.setPeriodicWave(SYNTH.customWave);
       } else if (SYNTH.waveform !== 'custom') {
@@ -185,6 +201,7 @@ export class AudioEngine {
       SYNTH.harmonics.slice(0, SYNTH.numHarmonics).forEach(([m, a, df]) => {
         if (hz * m >= nyquist * 0.9) return;
         const osc = this.actx.createOscillator();
+        this.trackScheduledSource(osc);
         const g   = this.actx.createGain();
         osc.type = 'sine';
         osc.frequency.value = hz * m;
@@ -213,12 +230,25 @@ export class AudioEngine {
     if (this.actx.state === 'suspended') this.actx.resume();
     this.kill.gain.cancelScheduledValues(this.actx.currentTime);
     this.kill.gain.setValueAtTime(1, this.actx.currentTime);
+    if (this.outputKill) {
+      this.outputKill.gain.cancelScheduledValues(this.actx.currentTime);
+      this.outputKill.gain.setValueAtTime(1, this.actx.currentTime);
+    }
   }
 
   stopAll() {
     if (!this.ready) return;
-    this.kill.gain.cancelScheduledValues(this.actx.currentTime);
-    this.kill.gain.setValueAtTime(0, this.actx.currentTime);
+    const now = this.actx.currentTime;
+    this.scheduledSources.forEach(src => {
+      try { src.stop(now); } catch {}
+    });
+    this.scheduledSources.clear();
+    this.kill.gain.cancelScheduledValues(now);
+    this.kill.gain.setValueAtTime(0, now);
+    if (this.outputKill) {
+      this.outputKill.gain.cancelScheduledValues(now);
+      this.outputKill.gain.setValueAtTime(0, now);
+    }
   }
 
   playArpeggio(freqs, noteDur = 0.55, step = 0.17) {

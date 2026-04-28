@@ -16,7 +16,7 @@ import {
   loadDrumSamples, reloadDrumBank, drawDrumMachine, scheduleDrmDraw, loadWorldRhythm,
   invalidateBankKeys, syncDrumSoundBankManifest,
   setSyncSend as drumSetSyncSend, setSeqEngineRef as drumSetSeqEngineRef,
-  setDrumGridMutateCallback,
+  setDrumGridMutateCallback, setDrumPreMutateCallback,
   WORLD_RHYTHMS_DRUM,
 } from './drum.js';
 import {
@@ -110,13 +110,13 @@ function applyPeerBpm(bpm) {
 // ── syncPlayUI (full version, overrides sequencer's stub) ───────────
 
 function syncPlayUI(state) {
-  ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play', 'btn-mob-footer-play'].forEach(id => {
+  ['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play', 'btn-clips-panel-play', 'btn-mob-footer-play'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? 'none' : '';
   });
-  ['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause', 'btn-mob-footer-pause'].forEach(id => {
+  ['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause', 'btn-clips-panel-pause', 'btn-mob-footer-pause'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state === 'playing' ? '' : 'none';
   });
-  ['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop', 'btn-mob-footer-stop'].forEach(id => {
+  ['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop', 'btn-clips-panel-stop', 'btn-mob-footer-stop'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = state !== 'stopped' ? '' : 'none';
   });
   document.body.classList.toggle('seq-is-playing', state === 'playing');
@@ -129,11 +129,11 @@ function syncPlayUI(state) {
 
 function syncVizBpmUi() {
   const bpmText = String(document.getElementById('seq-bpm-val')?.textContent || SEQ.bpm || 120).trim();
-  ['viz-bpm-val', 'seq-panel-bpm-val', 'drum-panel-bpm-val', 'mob-footer-bpm-val'].forEach(id => {
+  ['viz-bpm-val', 'seq-panel-bpm-val', 'drum-panel-bpm-val', 'clips-panel-bpm-val', 'mob-footer-bpm-val'].forEach(id => {
     const valueEl = document.getElementById(id);
     if (valueEl) valueEl.textContent = bpmText;
   });
-  ['btn-viz-bpm', 'btn-seq-panel-bpm', 'btn-drum-panel-bpm', 'btn-mob-footer-bpm'].forEach(id => {
+  ['btn-viz-bpm', 'btn-seq-panel-bpm', 'btn-drum-panel-bpm', 'btn-clips-panel-bpm', 'btn-mob-footer-bpm'].forEach(id => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.title = `Set tempo (${bpmText} BPM)`;
@@ -753,7 +753,7 @@ function syncAudioUi() {
       : '<svg class="hdr-icon"><use href="#icon-muted"></use></svg><span class="btn-text"> Muted</span>';
   }
 
-  ['btn-viz-mute', 'btn-seq-panel-mute', 'btn-drum-panel-mute', 'btn-mob-footer-mute'].forEach(id => {
+  ['btn-viz-mute', 'btn-seq-panel-mute', 'btn-drum-panel-mute', 'btn-clips-panel-mute', 'btn-mob-footer-mute'].forEach(id => {
     const vizBtn = document.getElementById(id);
     if (!vizBtn) return;
     vizBtn.classList.toggle('active-audio', audio.enabled);
@@ -780,6 +780,7 @@ function syncMixerUi(open) {
   document.getElementById('btn-viz-mixer')?.classList.toggle('active-mixer', open);
   document.getElementById('btn-seq-panel-mixer')?.classList.toggle('active-mixer', open);
   document.getElementById('btn-drum-panel-mixer')?.classList.toggle('active-mixer', open);
+  document.getElementById('btn-clips-panel-mixer')?.classList.toggle('active-mixer', open);
   document.getElementById('btn-mob-footer-mixer')?.classList.toggle('active-mixer', open);
 }
 
@@ -823,6 +824,7 @@ document.getElementById('btn-audio')?.addEventListener('click', () => toggleAudi
 document.getElementById('btn-viz-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-seq-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-drum-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
+document.getElementById('btn-clips-panel-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-mob-footer-mute')?.addEventListener('click', () => toggleAudioEnabled());
 document.getElementById('btn-viz-mixer')?.addEventListener('click', () => {
   document.getElementById('btn-mixer')?.click();
@@ -831,6 +833,9 @@ document.getElementById('btn-seq-panel-mixer')?.addEventListener('click', () => 
   document.getElementById('btn-mixer')?.click();
 });
 document.getElementById('btn-drum-panel-mixer')?.addEventListener('click', () => {
+  document.getElementById('btn-mixer')?.click();
+});
+document.getElementById('btn-clips-panel-mixer')?.addEventListener('click', () => {
   document.getElementById('btn-mixer')?.click();
 });
 document.getElementById('btn-mob-footer-mixer')?.addEventListener('click', () => {
@@ -843,6 +848,9 @@ document.getElementById('btn-seq-panel-bpm')?.addEventListener('click', () => {
   document.getElementById('bpm-display-btn')?.click();
 });
 document.getElementById('btn-drum-panel-bpm')?.addEventListener('click', () => {
+  document.getElementById('bpm-display-btn')?.click();
+});
+document.getElementById('btn-clips-panel-bpm')?.addEventListener('click', () => {
   document.getElementById('bpm-display-btn')?.click();
 });
 document.getElementById('btn-mob-footer-bpm')?.addEventListener('click', () => {
@@ -1017,31 +1025,50 @@ document.getElementById('syn-harmonics').addEventListener('input', function () {
 const _waveIO = {};
 
 (function initSeqSource() {
+  function isPhoneSeq() { return window.innerWidth <= 768; }
+
+  function syncSeqDrawer(open) {
+    const drawer = document.getElementById('seq-params-drawer');
+    const btn    = document.getElementById('btn-seq-params');
+    if (!drawer || !btn) return;
+    if (isPhoneSeq()) {
+      drawer.classList.toggle('open', open);
+      btn.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', String(open));
+    } else {
+      drawer.classList.toggle('closed', !open);
+      btn.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', String(open));
+    }
+  }
+
   function setSourceMode(mode) {
     SYNTH.sourceMode = mode;
     document.querySelectorAll('.seq-src-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('seq-src-' + mode).classList.add('active');
+    document.querySelectorAll(`.seq-src-btn[data-source-mode="${mode}"], #seq-src-${mode}`)
+      .forEach(b => b.classList.add('active'));
+    document.getElementById('seq-src-sample')?.setAttribute('aria-expanded', String(mode === 'sample'));
     const seqPanel = document.querySelector('#seq-wrap .seq-panel');
     const waveExpand = mode === 'wave';
     if (seqPanel) seqPanel.classList.toggle('wave-expand', waveExpand);
     document.getElementById('seq-wave-ctrl-bar').style.display = waveExpand ? 'flex' : 'none';
     document.getElementById('seq-wave-bar').style.display = waveExpand ? 'flex' : 'none';
     document.getElementById('seq-sample-bar').style.display = mode === 'sample' ? 'flex' : 'none';
+    if (mode !== 'sample') { const tb = document.getElementById('seq-sample-trim-bar'); if (tb) tb.style.display = 'none'; }
+    if (mode === 'sample' && isPhoneSeq()) {
+      syncSeqDrawer(false);
+    }
     if (waveExpand) {
       requestAnimationFrame(renderWaveDraw);
-      // On mobile, collapse the params drawer so the wave canvas gets full height
-      if (window.innerWidth <= 768) {
-        const drawer = document.getElementById('seq-params-drawer');
-        const btn    = document.getElementById('btn-seq-params');
-        if (drawer) drawer.classList.remove('open');
-        if (btn)    { btn.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
-      }
+      if (isPhoneSeq()) syncSeqDrawer(false);
     }
     scheduleWaveCanvasAnimation();
   }
 
-  ['synth', 'wave', 'sample'].forEach(m => {
-    document.getElementById('seq-src-' + m).addEventListener('click', () => {
+  document.querySelectorAll('.seq-src-btn').forEach(btn => {
+    const m = btn.dataset.sourceMode || btn.id?.replace('seq-src-', '');
+    if (!m) return;
+    btn.addEventListener('click', () => {
       // Toggle: clicking active wave/sample source collapses it back to synth
       if ((m === 'wave' || m === 'sample') && SYNTH.sourceMode === m) {
         setSourceMode('synth');
@@ -1346,10 +1373,276 @@ const _waveIO = {};
     const reader = new FileReader();
     reader.onload = async e => {
       audio._resume();
-      try { SYNTH.sampleBuffer = await audio.actx.decodeAudioData(e.target.result.slice(0)); }
-      catch (err) { console.error('Sample decode failed:', err); }
+      try {
+        const buf = await audio.actx.decodeAudioData(e.target.result.slice(0));
+        _sampleSetRaw(buf, file.name);
+      } catch (err) { console.error('Sample decode failed:', err); }
     };
     reader.readAsArrayBuffer(file);
+  });
+
+  // ── SAMPLE RECORDER + TRIM ───────────────────────────���────────────
+
+  let _recRawBuffer = null; // full decoded buffer before trim
+  let _trimStart    = 0;    // fraction 0..1
+  let _trimEnd      = 1;
+  let _mediaRec     = null;
+  let _recStream    = null;
+  let _recTimerInt  = null;
+
+  const _recBtn      = document.getElementById('sample-rec-btn');
+  const _recTimer    = document.getElementById('sample-rec-timer');
+  const _nameLbl     = document.getElementById('sample-name-lbl');
+  const _trimBtn     = document.getElementById('sample-trim-btn');
+  const _trimBar     = document.getElementById('seq-sample-trim-bar');
+  const _trimCvs     = document.getElementById('sample-trim-cvs');
+  const _trimCtx     = _trimCvs?.getContext('2d');
+  const _autocutChk  = document.getElementById('sample-autocut');
+  const _threshSl    = document.getElementById('sample-autocut-thresh');
+  const _threshLbls  = document.querySelectorAll('.sample-thresh-lbl');
+  const _startLbl    = document.getElementById('trim-start-lbl');
+  const _endLbl      = document.getElementById('trim-end-lbl');
+  const _durLbl      = document.getElementById('trim-dur-lbl');
+
+  function _setRecButton(label, recording) {
+    if (!_recBtn) return;
+    const text = _recBtn.querySelector('.sample-rec-text');
+    if (text) text.textContent = label;
+    else _recBtn.textContent = label;
+    _recBtn.classList.toggle('recording', recording);
+  }
+
+  function _fmtTime(s) { return s.toFixed(2) + 's'; }
+  function _fmtMM(s) {
+    const m = Math.floor(s / 60);
+    return String(m).padStart(2,'0') + ':' + String(Math.floor(s) % 60).padStart(2,'0');
+  }
+
+  function _syncThreshVisibility() {
+    const on = _autocutChk?.checked;
+    _threshLbls.forEach(el => el.style.display = on ? '' : 'none');
+    if (_threshSl) _threshSl.style.display = on ? '' : 'none';
+  }
+  _autocutChk?.addEventListener('change', _syncThreshVisibility);
+  _syncThreshVisibility();
+
+  function _sampleSetRaw(buf, name) {
+    _recRawBuffer = buf;
+    _trimStart = 0; _trimEnd = 1;
+    if (_autocutChk?.checked) {
+      _applyAutocut();
+    }
+    _applyTrim();
+    if (name) _nameLbl.textContent = name;
+    if (_trimBtn) _trimBtn.style.display = '';
+    if (_autocutChk && !_autocutChk.checked) {
+      _showTrimEditor();
+    } else {
+      _drawTrimCanvas();
+    }
+  }
+
+  function _applyAutocut() {
+    if (!_recRawBuffer) return;
+    const ch = _recRawBuffer.getChannelData(0);
+    const thresh = (_threshSl ? parseInt(_threshSl.value) : 20) / 1000;
+    let s = 0;
+    for (let i = 0; i < ch.length; i++) {
+      if (Math.abs(ch[i]) >= thresh) { s = i; break; }
+    }
+    let e = ch.length - 1;
+    for (let i = ch.length - 1; i >= 0; i--) {
+      if (Math.abs(ch[i]) >= thresh) { e = i; break; }
+    }
+    // add a small 5ms fade margin
+    const margin = Math.floor(_recRawBuffer.sampleRate * 0.005);
+    _trimStart = Math.max(0, (s - margin)) / ch.length;
+    _trimEnd   = Math.min(ch.length - 1, (e + margin)) / ch.length;
+  }
+
+  function _applyTrim() {
+    if (!_recRawBuffer) return;
+    const len  = _recRawBuffer.length;
+    const sr   = _recRawBuffer.sampleRate;
+    const s    = Math.floor(_trimStart * len);
+    const e    = Math.ceil(_trimEnd   * len);
+    const tlen = Math.max(1, e - s);
+    const nch  = _recRawBuffer.numberOfChannels;
+    const buf  = audio.actx.createBuffer(nch, tlen, sr);
+    for (let c = 0; c < nch; c++) {
+      buf.getChannelData(c).set(_recRawBuffer.getChannelData(c).subarray(s, e));
+    }
+    SYNTH.sampleBuffer = buf;
+    _syncTrimLabels();
+  }
+
+  function _syncTrimLabels() {
+    if (!_recRawBuffer) return;
+    const dur = _recRawBuffer.duration;
+    const s = _trimStart * dur;
+    const e = _trimEnd   * dur;
+    if (_startLbl) _startLbl.textContent = _fmtTime(s);
+    if (_endLbl)   _endLbl.textContent   = _fmtTime(e);
+    if (_durLbl)   _durLbl.textContent   = _fmtTime(Math.max(0, e - s));
+  }
+
+  // ── Trim canvas drawing ───────────────────���────────────────────────
+
+  function _drawTrimCanvas() {
+    if (!_trimCvs || !_trimCtx || !_recRawBuffer) return;
+    const W = _trimCvs.clientWidth || _trimCvs.offsetWidth || 400;
+    const H = 72;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const needW = Math.round(W * DPR);
+    const needH = Math.round(H * DPR);
+    if (_trimCvs.width !== needW || _trimCvs.height !== needH) {
+      _trimCvs.width  = needW;
+      _trimCvs.height = needH;
+    }
+    const ctx = _trimCtx;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const ch   = _recRawBuffer.getChannelData(0);
+    const len  = ch.length;
+    const mid  = H / 2;
+
+    // draw waveform in blocks
+    const BLOCKS = Math.min(len, W * 2);
+    ctx.beginPath();
+    for (let b = 0; b < BLOCKS; b++) {
+      const i0 = Math.floor(b / BLOCKS * len);
+      const i1 = Math.floor((b + 1) / BLOCKS * len);
+      let peak = 0;
+      for (let i = i0; i < i1; i++) { const a = Math.abs(ch[i]); if (a > peak) peak = a; }
+      const x  = b / BLOCKS * W;
+      const frac = b / BLOCKS;
+      // dim outside trim region
+      const inRange = frac >= _trimStart && frac <= _trimEnd;
+      ctx.fillStyle = inRange ? 'rgba(167,139,250,0.75)' : 'rgba(100,80,150,0.25)';
+      const h = Math.max(1, peak * mid * 0.95);
+      ctx.fillRect(x, mid - h, Math.max(1, W / BLOCKS + 0.5), h * 2);
+    }
+
+    // dim overlays outside trim
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.fillRect(0, 0, _trimStart * W, H);
+    ctx.fillRect(_trimEnd * W, 0, W - _trimEnd * W, H);
+
+    // draw handles
+    const sx = _trimStart * W;
+    const ex = _trimEnd   * W;
+    function drawHandle(x, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = 2;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      // triangle marker at top
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10); ctx.closePath(); ctx.fill();
+      // triangle marker at bottom
+      ctx.beginPath(); ctx.moveTo(x - 6, H); ctx.lineTo(x + 6, H); ctx.lineTo(x, H - 10); ctx.closePath(); ctx.fill();
+    }
+    drawHandle(sx, '#34d399');
+    drawHandle(ex, '#f87171');
+
+    _syncTrimLabels();
+  }
+
+  function _showTrimEditor() {
+    if (!_recRawBuffer) return;
+    if (_trimBar) _trimBar.style.display = 'flex';
+    requestAnimationFrame(_drawTrimCanvas);
+  }
+
+  function _hideTrimEditor() {
+    if (_trimBar) _trimBar.style.display = 'none';
+  }
+
+  // ── Trim canvas pointer interaction ─────────────────────────���─────
+
+  let _trimDrag = null; // 'start' | 'end' | null
+
+  if (_trimCvs) {
+    _trimCvs.addEventListener('pointerdown', e => {
+      const rect = _trimCvs.getBoundingClientRect();
+      const x    = (e.clientX - rect.left) / rect.width;
+      const dS   = Math.abs(x - _trimStart);
+      const dE   = Math.abs(x - _trimEnd);
+      _trimDrag  = dS <= dE ? 'start' : 'end';
+      _trimCvs.setPointerCapture(e.pointerId);
+    });
+    _trimCvs.addEventListener('pointermove', e => {
+      if (!_trimDrag) return;
+      const rect = _trimCvs.getBoundingClientRect();
+      const x    = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      if (_trimDrag === 'start') _trimStart = Math.min(x, _trimEnd - 0.001);
+      else                       _trimEnd   = Math.max(x, _trimStart + 0.001);
+      _drawTrimCanvas();
+    });
+    _trimCvs.addEventListener('pointerup',     () => { _trimDrag = null; });
+    _trimCvs.addEventListener('pointercancel', () => { _trimDrag = null; });
+  }
+
+  document.getElementById('sample-trim-apply')?.addEventListener('click', () => {
+    _applyTrim();
+    _hideTrimEditor();
+    if (_trimBtn) _trimBtn.style.display = '';
+  });
+
+  _trimBtn?.addEventListener('click', () => {
+    if (_trimBar?.style.display !== 'none') { _hideTrimEditor(); }
+    else { _showTrimEditor(); }
+  });
+
+  // ── Recording ─────────────────────────────────────────────────────
+
+  async function _startRecording() {
+    if (_mediaRec && _mediaRec.state === 'recording') return;
+    try {
+      audio._resume();
+      _recStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) {
+      alert('Microphone access denied: ' + (err.message || err));
+      return;
+    }
+    const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg',''].find(m => !m || MediaRecorder.isTypeSupported(m));
+    _mediaRec = new MediaRecorder(_recStream, mimeType ? { mimeType } : undefined);
+    const chunks = [];
+    _mediaRec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    _mediaRec.onstop = async () => {
+      _recStream.getTracks().forEach(t => t.stop());
+      clearInterval(_recTimerInt);
+      if (_recTimer) _recTimer.style.display = 'none';
+      _setRecButton('Record', false);
+      const blob = new Blob(chunks, { type: _mediaRec.mimeType || 'audio/webm' });
+      try {
+        const ab  = await blob.arrayBuffer();
+        const buf = await audio.actx.decodeAudioData(ab);
+        _sampleSetRaw(buf, 'Recorded sample');
+      } catch (err) { console.error('Record decode failed:', err); }
+    };
+    _mediaRec.start(100);
+    _setRecButton('Stop', true);
+    const t0 = Date.now();
+    if (_recTimer) _recTimer.style.display = '';
+    clearInterval(_recTimerInt);
+    _recTimerInt = setInterval(() => {
+      if (_recTimer) _recTimer.textContent = '● ' + _fmtMM((Date.now() - t0) / 1000);
+    }, 500);
+  }
+
+  function _stopRecording() {
+    if (_mediaRec && _mediaRec.state === 'recording') _mediaRec.stop();
+  }
+
+  _recBtn?.addEventListener('click', () => {
+    if (_mediaRec && _mediaRec.state === 'recording') { _stopRecording(); }
+    else { _startRecording(); }
+  });
+
+  // Redraw trim canvas on resize
+  window.addEventListener('resize', () => {
+    if (_trimBar?.style.display !== 'none') requestAnimationFrame(_drawTrimCanvas);
   });
 
   // When the params drawer is toggled, collapse/expand the wave & sample bars with it.
@@ -1368,8 +1661,12 @@ const _waveIO = {};
       document.getElementById('seq-wave-bar').style.display = d;
       document.querySelector('#seq-wrap .seq-panel')?.classList.toggle('wave-expand', drawerOpen);
       if (drawerOpen) requestAnimationFrame(renderWaveDraw);
-    } else {
-      document.getElementById('seq-sample-bar').style.display = d;
+    } else if (mode === 'sample') {
+      if (drawerOpen) setSourceMode('synth');
+      else {
+        document.getElementById('seq-sample-bar').style.display = 'none';
+        if (_trimBar) _trimBar.style.display = 'none';
+      }
     }
   });
 
@@ -1699,13 +1996,13 @@ document.getElementById('btn-seq-mirror')?.addEventListener('click', () => {
   });
   scheduleDrawSequencer();
 });
-['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play', 'btn-mob-footer-play'].forEach(id => {
+['btn-seq-play', 'mob-btn-play', 'btn-seq-panel-play', 'btn-drum-panel-play', 'btn-clips-panel-play', 'btn-mob-footer-play'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => triggerSequencerPlay());
 });
-['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause', 'btn-mob-footer-pause'].forEach(id => {
+['btn-seq-pause', 'mob-btn-pause', 'btn-seq-panel-pause', 'btn-drum-panel-pause', 'btn-clips-panel-pause', 'btn-mob-footer-pause'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => seqEngine.pause());
 });
-['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop', 'btn-mob-footer-stop'].forEach(id => {
+['btn-seq-stop', 'mob-btn-stop', 'btn-seq-panel-stop', 'btn-drum-panel-stop', 'btn-clips-panel-stop', 'btn-mob-footer-stop'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', () => seqEngine.stop());
 });
 
@@ -1756,7 +2053,7 @@ let _waveAnimRaf = 0;
 function drawWaveCanvas(cvs, type, t) {
   const wctx = cvs.getContext('2d');
   const W = cvs.offsetWidth || 52, H = cvs.offsetHeight || 22;
-  const DPR = window.devicePixelRatio || 1;
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
   if (cvs.width !== W * DPR) { cvs.width = W * DPR; cvs.height = H * DPR; wctx.scale(DPR, DPR); }
   wctx.clearRect(0, 0, W, H);
   const sel = cvs.classList.contains('active');
@@ -1887,8 +2184,12 @@ let _pendingDrumSlot = -1;
 let _autoSeqRing  = -1;
 let _autoDrmRing  = -1;
 
+let _persistTimer = null;
 function _persistSlots() {
-  try { localStorage.setItem(SLOTS_KEY, JSON.stringify({ seq: _seqSlots, drum: _drumSlots })); } catch { /* quota */ }
+  clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(() => {
+    try { localStorage.setItem(SLOTS_KEY, JSON.stringify({ seq: _seqSlots, drum: _drumSlots })); } catch { /* quota */ }
+  }, 0);
 }
 function _loadSlots() {
   try {
@@ -1903,7 +2204,7 @@ function _loadSlots() {
 function _drawClipMini(cvs, clip, isSeq) {
   const W = cvs.offsetWidth, H = cvs.offsetHeight;
   if (W === 0 || H === 0) return;
-  const DPR = window.devicePixelRatio || 1;
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
   cvs.width  = W * DPR;
   cvs.height = H * DPR;
   const ctx = cvs.getContext('2d');
@@ -1980,7 +2281,7 @@ let _miniCanvasRefs = [];  // { cvs, clip, isSeq, baseImgData }
 let _clipAnimRaf    = null;
 
 function _drawClipPlayheads() {
-  const DPR = window.devicePixelRatio || 1;
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
   for (const item of _miniCanvasRefs) {
     const { cvs, clip, isSeq, slotIdx, baseImgData } = item;
     if (!baseImgData) continue;
@@ -2078,7 +2379,7 @@ function renderClipSlots() {
 
   // Draw base content after layout, cache ImageData, then start animation
   requestAnimationFrame(() => {
-    const DPR = window.devicePixelRatio || 1;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
     for (const item of miniCanvases) {
       _drawClipMini(item.cvs, item.clip, item.isSeq);
       const W = item.cvs.offsetWidth, H = item.cvs.offsetHeight;
@@ -2107,6 +2408,7 @@ function activateClipSlot(type, idx) {
   }
 
   const apply = () => {
+    clipsUndoPush();
     if (isSeq) {
       SEQ.grid = { ...clip.grid };
       if (clip.loopLen !== undefined) SEQ.loopLen = clip.loopLen;
@@ -2207,6 +2509,90 @@ function _syncSeqUndoBtn() {
 }
 
 setSeqPreMutateCallback(() => seqUndoPush());
+
+// ── DRUM UNDO ────────────────────────────────────────────────────────
+const _drmUndoStack = [];
+const _DRM_UNDO_MAX = 40;
+let _drmUndoDebounceT = 0;
+
+function _drmUndoSnapshot() {
+  return { grid: { ...DRUM_GRID }, loopLen: drumLoopLen };
+}
+
+function drmUndoPush(force = false) {
+  const now = Date.now();
+  if (!force && now - _drmUndoDebounceT < 300) return;
+  _drmUndoDebounceT = now;
+  _drmUndoStack.push(_drmUndoSnapshot());
+  if (_drmUndoStack.length > _DRM_UNDO_MAX) _drmUndoStack.shift();
+  _syncDrmUndoBtn();
+}
+
+function _drmUndoPop() {
+  if (!_drmUndoStack.length) return;
+  const snap = _drmUndoStack.pop();
+  for (const k of Object.keys(DRUM_GRID)) delete DRUM_GRID[k];
+  Object.assign(DRUM_GRID, snap.grid);
+  setDrumLoopLen(snap.loopLen);
+  scheduleDrmDraw();
+  _syncDrmUndoBtn();
+}
+
+function _syncDrmUndoBtn() {
+  const btn = document.getElementById('btn-drum-undo');
+  if (btn) btn.disabled = _drmUndoStack.length === 0;
+}
+
+setDrumPreMutateCallback(() => drmUndoPush());
+document.getElementById('btn-drum-undo')?.addEventListener('click', () => _drmUndoPop());
+
+// ── CLIPS UNDO ───────────────────────────────────────────────────────
+const _clipsUndoStack = [];
+const _CLIPS_UNDO_MAX = 20;
+
+function _clipsUndoSnapshot() {
+  return {
+    activeSeqSlot:  _activeSeqSlot,
+    activeDrumSlot: _activeDrumSlot,
+    seqGrid:    { ...SEQ.grid },
+    seqLoopLen: SEQ.loopLen,
+    drumGrid:   { ...DRUM_GRID },
+    drumLoopLen: drumLoopLen,
+  };
+}
+
+function clipsUndoPush() {
+  _clipsUndoStack.push(_clipsUndoSnapshot());
+  if (_clipsUndoStack.length > _CLIPS_UNDO_MAX) _clipsUndoStack.shift();
+  _syncClipsUndoBtn();
+}
+
+function _clipsUndoPop() {
+  if (!_clipsUndoStack.length) return;
+  const snap = _clipsUndoStack.pop();
+  SEQ.grid    = snap.seqGrid;
+  SEQ.loopLen = snap.seqLoopLen;
+  for (const k of Object.keys(DRUM_GRID)) delete DRUM_GRID[k];
+  Object.assign(DRUM_GRID, snap.drumGrid);
+  setDrumLoopLen(snap.drumLoopLen);
+  _activeSeqSlot  = snap.activeSeqSlot;
+  _activeDrumSlot = snap.activeDrumSlot;
+  _pendingSeqSlot  = -1;
+  _pendingDrumSlot = -1;
+  seqEngine._pendingClipApply = null;
+  scheduleDrawSequencer();
+  scheduleDrmDraw();
+  renderClipSlots();
+  _syncClipsUndoBtn();
+}
+
+function _syncClipsUndoBtn() {
+  const btn = document.getElementById('btn-clips-undo');
+  if (btn) btn.disabled = _clipsUndoStack.length === 0;
+}
+
+document.getElementById('btn-clips-undo')?.addEventListener('click', () => _clipsUndoPop());
+
 setDrumGridMutateCallback(() => {
   if (_activeDrumSlot >= 0 && _drumSlots[_activeDrumSlot]) {
     _drumSlots[_activeDrumSlot] = { ..._drumSlots[_activeDrumSlot], grid: { ...DRUM_GRID }, loopLen: drumLoopLen };
@@ -2238,7 +2624,7 @@ setDrumGridMutateCallback(() => {
     opt.value = name; opt.textContent = name;
     sel.appendChild(opt);
   });
-  sel.addEventListener('change', function () { loadWorldRhythm(this.value); });
+  sel.addEventListener('change', function () { drmUndoPush(true); loadWorldRhythm(this.value); });
 })();
 
 const sel = document.getElementById('drum-preset-sel');
@@ -2251,6 +2637,7 @@ if (sel.value) {
 }
 
 sel.addEventListener('change', function () {
+  drmUndoPush(true);
   loadWorldRhythm(this.value);
 });
 
@@ -2305,7 +2692,7 @@ function clearDrumGrid() {
   document.getElementById('drum-preset-sel').value = 'Clear';
   scheduleDrmDraw();
 }
-document.getElementById('btn-drum-panel-clear').addEventListener('click', clearDrumGrid);
+document.getElementById('btn-drum-panel-clear').addEventListener('click', () => { drmUndoPush(true); clearDrumGrid(); });
 
 // ── MIXER PANEL ───────────────────────────────────────────────────────
 
